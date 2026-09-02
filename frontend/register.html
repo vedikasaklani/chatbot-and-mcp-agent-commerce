@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Create account — Shop Assistant</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <main class="screen login-screen">
+    <form id="register-form" class="login-card" autocomplete="on">
+      <h1 class="login-title">Create your account</h1>
+      <p class="login-subtitle">Sign up to start chatting with the shop assistant.</p>
+
+
+      <label class="field">
+        <span class="field-label">Email</span>
+        <input type="email" id="register-email" name="email" required autocomplete="email" />
+      </label>
+
+      <label class="field">
+        <span class="field-label">Password</span>
+        <input type="password" id="register-password" name="password" required autocomplete="new-password" minlength="8" />
+      </label>
+
+      <label class="field">
+        <span class="field-label">Confirm password</span>
+        <input type="password" id="register-password-confirm" name="password_confirm" required autocomplete="new-password" minlength="8" />
+      </label>
+
+      <p id="register-error" class="error-text" role="alert" hidden></p>
+
+      <button type="submit" class="btn btn-primary btn-block" id="register-submit">
+        Create account
+      </button>
+
+      <p class="auth-switch">
+        Already have an account? <a href="index.html">Sign in</a>
+      </p>
+    </form>
+  </main>
+
+  <script src="register.js"></script>
+</body>
+</html>
