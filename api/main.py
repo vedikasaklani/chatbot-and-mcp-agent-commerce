@@ -2,12 +2,11 @@ from fastapi import FastAPI, Depends, HTTPException
 import database.database_models as database_models
 from fastapi.middleware.cors import CORSMiddleware
 import models
-from sqlalchemy.orm import Session
-from models import OrderCreate, OrderOut, ChatInput
-from models import User
-from models import Product
+from sqlalchemy.orm import Session, joinedload
+from models import OrderCreate, OrderOut, ChatInput, User, Product
 from typing import Optional
-from agent.agent import run_agent
+from agent.agent import run_agent, build_decision_record
+from api.reviews import reviews_router
 from database.database import session, get_db
 from api.dependencies import oauth_scheme1
 from api.razorpay_integration import agent_router, customer_router
@@ -16,6 +15,8 @@ from security import get_current_user, oauth2_scheme
 from sqlalchemy.sql.operators import ilike_op
 from api.razorpay_payment_webhook import webhook_router
 app=FastAPI()
+
+app.include_router(reviews_router)
 app.include_router(customer_router)
 app.include_router(agent_router)
 app.include_router(webhook_router)
@@ -37,8 +38,23 @@ def chat(
     payload: ChatInput,
     auth_token: str = Depends(oauth2_scheme),
     user: database_models.User = Depends(get_current_user),
+    db:Session=Depends(get_db)
 ):
-    return run_agent(payload.messages, token=auth_token)
+    result=run_agent(payload.messages, token=auth_token)
+    order_id = next(
+        (e["result"]["id"] for e in result["trace"]
+         if e["tool"] == "create_order" and isinstance(e["result"], dict) and "id" in e["result"]),
+        None,
+    )
+
+    if order_id:
+        record = build_decision_record(result["trace"], payload.message, result["final_response"], order_id)
+        order = db.query(database_models.Order).filter(database_models.Order.id == order_id).first()
+        if order:
+            order.decision_record = record
+            db.commit()
+
+    return result
 
 
 
@@ -74,9 +90,6 @@ def get_product(
 ):
     product=db.query(database_models.Product).filter(database_models.Product.pid==id).first()
     return product
-
-from sqlalchemy.orm import joinedload
-
 
 
 @app.get("/cart")

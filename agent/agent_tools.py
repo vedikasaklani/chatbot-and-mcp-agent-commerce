@@ -177,8 +177,8 @@ TOOLS = [
         "function": {
             "name": "initiate_payment",
             "description": (
-                "Send a UPI collect request to the given VPA for an existing "
-                "order. The amount is determined by the order itself and "
+                "Send a payment link to the user for the existing order made by them"
+                "The amount is determined by the order itself and "
                 "cannot be specified here."
             ),
             "parameters": {
@@ -195,15 +195,32 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_ratings",
+            "description": "Get avg. rating by product ID to opt better products",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_id": {
+                        "type": "integer",
+                        "description": "Product ID",
+                    },
+                },
+                "required": ["product_id"],
+                "additionalProperties": False,
+            },
+        },
+    }
 
 ]
-
 
 
 # Dispatcher to map a tool call to an actual HTTP request against the running FastAPI backend
 import requests
 
-BASE_URL = "http://localhost:8000" 
+BASE_URL = "http://127.0.0.1:8000"
 CONNECT_TIMEOUT_SECONDS = 3.05
 READ_TIMEOUT_SECONDS = 15
 
@@ -214,7 +231,7 @@ def execute_tool(name: str, auth_token:str, arguments: dict) -> dict:
     try:
         if name == "search_products":
             params = {}
-            if "query" in arguments:
+            if "q" in arguments:
                 params["q"] = arguments["q"]
             if "category" in arguments:
                 params["category"] = arguments["category"]
@@ -269,11 +286,17 @@ def execute_tool(name: str, auth_token:str, arguments: dict) -> dict:
                 timeout=(CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS),
                 headers=headers,
             )
+        elif name == "get_ratings":
+            product_id = arguments["product_id"]
+            r = requests.get(
+                f"{BASE_URL}/reviews/products/{product_id}",
+                timeout=(CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS),
+                headers=headers
+            )
+            return r.json()
         else:
             return {"error": f"Unknown tool: {name}"}
 
-        # Surface backend errors as structured data , lets the agent explain WHy
-        # something failed, making audit friendly
         if r.status_code >= 400:
             return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
 

@@ -1,45 +1,39 @@
 """
-Agent loop using HF's OpenAI-compatible client for tool calling.
-
-- Tool-calling is a structured feature of the chat.completions API
-  The OpenAI client parses response.choices[0].message.tool_calls into proper objects.
-- Multi-turn tool loops (call tool -> feed result back -> model responds
-  or calls another tool) are the standard OpenAI message format, so any
-  guide/example for "openai function calling" applies directly here
+Agent loop using Groq's OpenAI-compatible client for tool calling.
 """
-
 import os
 import json
 from dotenv import load_dotenv
-from groq import Groq
 from openai import OpenAI
 from agent.prompts import SYSTEM_PROMPT
-from models import User
 from agent.agent_tools import TOOLS, execute_tool
 
 load_dotenv()
 
 client = OpenAI(
     base_url="https://api.groq.com/openai/v1",
-    api_key=os.environ["GROQ_API_KEY"],  # Groq API key, not HF
+    api_key=os.environ["GROQ_API_KEY"],
     timeout=30.0,
 )
 
-MODEL = "qwen/qwen3.8-27b" # Gr
+MODEL = "qwen/qwen3.8-27b"
+
+conversation_history: dict[str, list[dict]] = {}
+
 
 def run_agent(user_message: str, token: str, max_turns: int = 9) -> dict:
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_message},
-    ]
+    if token not in conversation_history:
+        conversation_history[token] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages = list(conversation_history[token])
+    messages.append({"role": "user", "content": user_message})
+
     trace = []
 
     try:
         for turn in range(max_turns):
-            # Actually pass the full messages list, not a reconstructed string
             response = client.chat.completions.create(
                 model=MODEL,
-                messages=messages,  # <-- use the full history
+                messages=messages,
                 tools=TOOLS,
                 tool_choice="auto",
             )
@@ -47,16 +41,31 @@ def run_agent(user_message: str, token: str, max_turns: int = 9) -> dict:
             message = response.choices[0].message
 
             if not message.tool_calls:
+                messages.append({"role": "assistant", "content": message.content})
+                conversation_history[token] = messages  
                 return {
                     "final_response": message.content,
                     "trace": trace,
                     "turns_used": turn + 1,
                 }
 
+            # Assistant's tool-call message MUST go in before the tool results
+            messages.append({
+                "role": "assistant",
+                "content": message.content,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in message.tool_calls
+                ],
+            })
+
             for tool_call in message.tool_calls:
                 name = tool_call.function.name
                 arguments = json.loads(tool_call.function.arguments)
-
                 result = execute_tool(name, token, arguments)
 
                 trace.append({
@@ -66,35 +75,68 @@ def run_agent(user_message: str, token: str, max_turns: int = 9) -> dict:
                     "result": result,
                 })
 
-                # Build a human-readable summary of what happened
-                if name == "search_products":
-                    summary = f"Searched for products with: {arguments}\nFound {len(result)} products"
-                elif name == "add_to_cart":
-                    summary = f"Added {arguments.get('quantity', 1)} unit(s) of product {arguments.get('product_id')} to cart"
-                elif name == "create_order":
-                    summary = f"Created order with ID {result.get('id')}, total: ₹{result.get('total_amount')}"
-                else:
-                    summary = f"Executed {name}"
-
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
-                    "content": f"{summary}\n\nFull result: {json.dumps(result)}",
+                    "content": json.dumps(result),
                 })
 
+        conversation_history[token] = messages  # commit even on max-turns cutoff
         return {
             "final_response": "I wasn't able to complete this within the allowed steps.",
             "trace": trace,
             "turns_used": max_turns,
             "hit_max_turns": True,
         }
-    except KeyboardInterrupt:
-        return _cancelled_response(trace, len(trace))
 
-def _cancelled_response(trace: list, turns_used: int) -> dict:
+    except Exception:
+            return {
+            "final_response": "Something went wrong on my end — please try that again.",
+            "trace": trace,
+            "error": True,
+        }
+
+def build_decision_record(trace: list[dict], user_message: str, final_response: str, order_id: int = None) -> dict:
+    """Turn the raw tool-call trace into a structured, human-readable audit record."""
+    steps = [
+        {
+            "step": entry["turn"],
+            "action": entry["tool"],
+            "input": entry["arguments"],
+            "outcome": _summarize_outcome(entry["tool"], entry["result"]),
+        }
+        for entry in trace
+    ]
+
     return {
-        "final_response": "Agent cancelled. No further actions were taken.",
-        "trace": trace,
-        "turns_used": turns_used,
-        "cancelled": True,
+        "order_id": order_id,
+        "user_request": user_message,
+        "steps": steps,
+        "constraints_applied": _extract_constraints(trace),
+        "final_response": final_response,
     }
+
+
+def _summarize_outcome(tool_name: str, result) -> str:
+    if tool_name == "search_products":
+        return f"Found {len(result)} matching product(s)"
+    if tool_name == "add_to_cart":
+        return "Item added to cart"
+    if tool_name == "create_order":
+        if isinstance(result, dict) and "id" in result:
+            return f"Order #{result['id']} created, total ₹{result.get('total_amount')}"
+        return f"Order creation failed: {result}"
+    if tool_name == "get_reviews":
+        return f"Retrieved {len(result)} review(s)"
+    return "Executed"
+
+
+def _extract_constraints(trace: list[dict]) -> list[str]:
+    """Surface the moments hard rule"""
+    notes = []
+    for entry in trace:
+        if entry["tool"] == "create_order":
+            result = entry["result"]
+            if isinstance(result, dict) and "exceeds max allowed" in str(result.get("detail", "")):
+                notes.append(f"Order blocked by cap: {result['detail']}")
+    return notes

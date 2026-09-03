@@ -1,6 +1,5 @@
 from dotenv import load_dotenv
 load_dotenv()
-
 import os
 import time
 import razorpay
@@ -9,7 +8,6 @@ from typing import Literal
 import database.database_models as db_mdl
 import models
 from fastapi import Depends, HTTPException, Request
-
 from models import OrderOut, PaymentInitiate
 from database.database_models import CartItem, Product, User
 from sqlalchemy.orm import Session, joinedload

@@ -1,5 +1,5 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, ForeignKey, Float, Enum, DateTime, UUID
+from sqlalchemy import Column, Integer,JSON, String, ForeignKey, Float, Enum, DateTime, UUID
 from sqlalchemy.orm import relationship
 import enum
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -32,14 +32,6 @@ class Product(Base):
     seller=Column(String)
     categories=Column(ARRAY(String))
     url=Column(String)
-
-class ProductVariant(Base):
-    __tablename__="Product_Variants"
-    id = Column(Integer, primary_key=True)
-    product_id = Column(Integer, ForeignKey("Products.pid"))
-    name = Column(String)
-    stock=Column(Integer)
-    price = Column(Float)
 
 class Cart(Base):
     __tablename__ = "Carts"
@@ -102,6 +94,7 @@ class Order(Base):
     razorpay_order_id = Column(String, nullable=True)      # filled in step 2
     razorpay_payment_id = Column(String, nullable=True)    # filled after payment
     created_at = Column(DateTime, default=datetime.now)
+    decision_record = Column(JSON, nullable=True)
 
     items = relationship("OrderItem", back_populates="order")
     user = relationship("User", back_populates="orders")
@@ -118,3 +111,29 @@ class OrderItem(Base):
 
     order = relationship("Order", back_populates="items")
     product = relationship("Product")
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+    id = Column(Integer, primary_key=True)
+
+    product_id = Column(
+        Integer,
+        ForeignKey("Products.pid")
+    )
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("Users.id")
+    )
+    rating = Column(Integer, nullable=False)
+
+    text = Column(String, nullable=False)
+
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow
+    )
+
+    product = relationship("Product")
+    user = relationship("User")

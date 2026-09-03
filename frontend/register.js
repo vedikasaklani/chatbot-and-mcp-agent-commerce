@@ -9,7 +9,7 @@
  * If the real endpoint instead just creates the account and expects a
  * separate sign-in step, swap the redirect below for one to "/".
  * ===================================================================== */
-const REGISTER_URL = "http://localhost:8000/auth/register";
+const REGISTER_URL = "http://127.0.0.1:8000/auth/register";
 
 const form = document.getElementById("register-form");
 const errorEl = document.getElementById("register-error");

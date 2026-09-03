@@ -63,9 +63,9 @@ const API = {
   PRODUCTS_URL: "http://127.0.0.1:8000/products",
   PRODUCTS_BY_ID_URL: (id) => `http://127.0.0.1:8000/products/${id}`,
 
-  CART_URL: "/cart",
-  ADD_TO_CART_URL: (productId, quantity) => `/cart/${productId}/${quantity}`,
-  REMOVE_FROM_CART_URL: (productId, quantity) => `/cart/${productId}/${quantity}/delete`,
+  CART_URL: "http://127.0.0.1:8000/cart",
+  ADD_TO_CART_URL: (productId, quantity) => `http://127.0.0.1:8000/cart/${productId}/${quantity}`,
+  REMOVE_FROM_CART_URL: (productId, quantity) => `http://127.0.0.1:8000/cart/${productId}/${quantity}/delete`,
   
   CREATE_ORDER_URL: "http://127.0.0.1:8000/razorpay/agent/orders",
   PAY_URL: (orderId) => `http://127.0.0.1:8000/razorpay/agent/orders/${orderId}/pay`,
