@@ -141,4 +141,6 @@ def get_ratings(product_id: int) -> dict:
 
 if __name__ == "__main__":
     mcp.run(transport="streamable-http",
-            port=9000,)  # local Claude Desktop connector
+            host="0.0.0.0",
+            port=int(os.environ.get("PORT", 9000))
+              )  # local Claude Desktop connector
