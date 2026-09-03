@@ -140,7 +140,7 @@ celerybeat.pid
 mnesia/
 rabbitmq/
 rabbitmq-data/
-
+alembin.ini
 # ActiveMQ
 activemq-data/
 
