@@ -23,9 +23,10 @@ BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
 def _headers() -> dict:
     """Map the WorkOS-verified caller to one of OUR users, then mint a
     normal backend JWT for calling our own FastAPI API."""
-    token = get_access_token()               # verified by AuthKitProvider already
-    email = token.claims.get("email")        # confirm exact claim name on first test
+    token = get_access_token()               # verified by AuthKitProvider 
+    email = token.claims.get("email")        
 
+    # we have to drive the generator ourselves to get a real Session.
     db_gen = get_db()
     db = next(db_gen)
     try:
@@ -34,7 +35,7 @@ def _headers() -> dict:
             raise HTTPException(403, "No matching account for this email")
         return {"Authorization": f"Bearer {create_access_token(user.id)}"}
     finally:
-        next(db_gen, None)  # runs get_db's cleanup/close code after the yield
+        next(db_gen, None)  
 
 
 #im making the connection timeout so the agent doesnt stay stuck in loops.
@@ -137,9 +138,54 @@ def get_ratings(product_id: int) -> dict:
         return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
     return r.json()
 
+#Workaround for pydantic httpurl automatically adding a slash at end: causes a mismatch error
+import json
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+
+METADATA_PATHS = {
+    "/.well-known/oauth-protected-resource/mcp",
+    "/.well-known/oauth-authorization-server/mcp",
+}
+
+class StripTrailingSlashMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if request.url.path not in METADATA_PATHS:
+            return response
+
+        body = b""
+        async for chunk in response.body_iterator:
+            body += chunk
+
+        try:
+            data = json.loads(body)
+            if isinstance(data.get("issuer"), str):
+                data["issuer"] = data["issuer"].rstrip("/")
+            if isinstance(data.get("authorization_servers"), list):
+                data["authorization_servers"] = [
+                    u.rstrip("/") for u in data["authorization_servers"]
+                ]
+            body = json.dumps(data).encode()
+        except Exception:
+            pass
+
+        return Response(
+            content=body,
+            status_code=response.status_code,
+            headers={
+                k: v for k, v in response.headers.items()
+                if k.lower() not in ("content-length", "content-encoding")
+            },
+            media_type=response.media_type or "application/json",
+        )
+
+from starlette.middleware import Middleware
 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http",
-            host="0.0.0.0",
-            port=int(os.environ.get("PORT", 9000))
-              )  # local Claude Desktop connector
+    mcp.run(
+        transport="streamable-http",
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 9000)),
+        middleware=[Middleware(StripTrailingSlashMiddleware)],
+    )  

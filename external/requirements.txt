@@ -3,3 +3,4 @@ fastmcp==4.0.2
 requests==2.34.2
 mcp==2.1.1
 sqlalchemy==2.0.52
+starlette==1.6.0
