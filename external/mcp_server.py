@@ -12,7 +12,7 @@ from database.database_models import User
 mcp = FastMCP(
     "ecommerce-agent",
     auth=AuthKitProvider(
-        authkit_domain="https://auth.workos.com",
+        authkit_domain="https://polished-silence-88-staging.authkit.app/",
         base_url="https://external-mcp-server.onrender.com",  # must match what WorkOS has configured
     ),
 )
