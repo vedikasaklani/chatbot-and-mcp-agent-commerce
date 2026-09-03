@@ -1,9 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException
 import database.database_models as database_models
 from fastapi.middleware.cors import CORSMiddleware
-import models
 from sqlalchemy.orm import Session, joinedload
-from models import OrderCreate, OrderOut, ChatInput, User, Product
+from database.models import OrderCreate, OrderOut, ChatInput, User, Product
 from typing import Optional
 from agent.agent import run_agent, build_decision_record
 from api.reviews import reviews_router
@@ -14,7 +13,10 @@ from api.auth import router as auth_router
 from security import get_current_user, oauth2_scheme
 from sqlalchemy.sql.operators import ilike_op
 from api.razorpay_payment_webhook import webhook_router
-app=FastAPI()
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+
+app = FastAPI()
 
 app.include_router(reviews_router)
 app.include_router(customer_router)
@@ -231,3 +233,9 @@ def delete_from_cart(
 
     db.commit()
     return {"detail": "Cart updated."} 
+
+
+# Serve the frontend through an HTTP route instead of exposing its Windows
+# filesystem path to the browser.
+frontend_directory = Path(__file__).resolve().parent.parent / "frontend"
+app.mount("/", StaticFiles(directory=frontend_directory, html=True), name="frontend")

@@ -9,7 +9,10 @@
  * If the real endpoint instead just creates the account and expects a
  * separate sign-in step, swap the redirect below for one to "/".
  * ===================================================================== */
-const REGISTER_URL = "http://127.0.0.1:8000/auth/register";
+const API_BASE = window.location.port === "8000"
+  ? ""
+  : `${window.location.protocol}//${window.location.hostname}:8000`;
+const REGISTER_URL = `${API_BASE}/auth/register`;
 
 const form = document.getElementById("register-form");
 const errorEl = document.getElementById("register-error");

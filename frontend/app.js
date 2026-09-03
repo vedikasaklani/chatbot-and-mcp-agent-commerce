@@ -55,21 +55,25 @@
  * ============================================================================
  */
 
+const API_BASE = window.location.port === "8000"
+  ? ""
+  : `${window.location.protocol}//${window.location.hostname}:8000`;
+
 const API = {
-  LOGIN_URL: "http://127.0.0.1:8000/auth/login",
-  REGISTER_URL: "http://127.0.0.1:8000/auth/register",
+  LOGIN_URL: `${API_BASE}/auth/login`,
+  REGISTER_URL: `${API_BASE}/auth/register`,
 
-  CHAT_URL: "http://127.0.0.1:8000/chat",
-  PRODUCTS_URL: "http://127.0.0.1:8000/products",
-  PRODUCTS_BY_ID_URL: (id) => `http://127.0.0.1:8000/products/${id}`,
+  CHAT_URL: `${API_BASE}/chat`,
+  PRODUCTS_URL: `${API_BASE}/products`,
+  PRODUCTS_BY_ID_URL: (id) => `${API_BASE}/products/${id}`,
 
-  CART_URL: "http://127.0.0.1:8000/cart",
-  ADD_TO_CART_URL: (productId, quantity) => `http://127.0.0.1:8000/cart/${productId}/${quantity}`,
-  REMOVE_FROM_CART_URL: (productId, quantity) => `http://127.0.0.1:8000/cart/${productId}/${quantity}/delete`,
+  CART_URL: `${API_BASE}/cart`,
+  ADD_TO_CART_URL: (productId, quantity) => `${API_BASE}/cart/${productId}/${quantity}`,
+  REMOVE_FROM_CART_URL: (productId, quantity) => `${API_BASE}/cart/${productId}/${quantity}/delete`,
   
-  CREATE_ORDER_URL: "http://127.0.0.1:8000/razorpay/agent/orders",
-  PAY_URL: (orderId) => `http://127.0.0.1:8000/razorpay/agent/orders/${orderId}/pay`,
-  VERIFY_PAYMENT_URL: (orderId) => `http://127.0.0.1:8000/razorpay/agent/orders/${orderId}/verify`,
+  CREATE_ORDER_URL: `${API_BASE}/razorpay/agent/orders`,
+  PAY_URL: (orderId) => `${API_BASE}/razorpay/agent/orders/${orderId}/pay`,
+  VERIFY_PAYMENT_URL: (orderId) => `${API_BASE}/razorpay/agent/orders/${orderId}/verify`,
 };
 
 /* =====================================================================

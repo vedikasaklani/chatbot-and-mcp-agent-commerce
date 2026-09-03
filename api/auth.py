@@ -1,13 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException
+import requests
+from fastapi import APIRouter, Depends, HTTPException,Query, Form
 from api.dependencies import oauth_scheme1
 from database.database import get_db
 from sqlalchemy.orm import Session
 import database.database_models as database_models
 from utils.auth import get_password_hash, verify_password
 from database.database_models import User
-from models import RegisterRequest
+from database.models import RegisterRequest
 from security import create_access_token
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import RedirectResponse
+
+from dotenv import load_dotenv
+load_dotenv()
+import os
+
+WORKOS_API_KEY = os.getenv("WORKOS_API_KEY")
 
 router=APIRouter(
     prefix="/auth", tags=["authentication"]
@@ -61,3 +69,97 @@ def login(
         "access_token": token,
         "token_type": "bearer"
     }
+
+
+@router.get("/auth/workos/login")
+def workos_login_page(
+    external_auth_id: str = Query(...)
+):
+    #the frontend login ui workos should redirect to
+    frontend_login_url = (
+        "https://agent-commerce-payout-automation.onrender.com/"
+        f"?external_auth_id={external_auth_id}"
+    )
+
+    return RedirectResponse(
+        url=frontend_login_url,
+        status_code=302
+    )
+
+
+@router.post("/auth/workos/login")
+def workos_login(
+    external_auth_id: str = Form(...),
+    username: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    #authenticate using existing : 
+
+    user = (
+        db.query(database_models.User)
+        .filter(database_models.User.email == username)
+        .first()
+    )
+
+    if not user or not verify_password(
+        password,
+        user.hashed_password
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect email or password"
+        )
+
+    #authentication with workos
+
+    if not WORKOS_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="WORKOS_API_KEY is not configured"
+        )
+
+    workos_response = requests.post(
+        "https://api.workos.com/authkit/oauth2/complete",
+        headers={
+            "Authorization": f"Bearer {WORKOS_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "external_auth_id": external_auth_id,
+            "user": {
+                "id": str(user.id),
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+            },
+        },
+        timeout=10,
+    )
+
+    #workos errors
+
+    if not workos_response.ok:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Unable to complete WorkOS authentication",
+                "workos_error": workos_response.text,
+            },
+        )
+
+    workos_data = workos_response.json()
+
+    redirect_uri = workos_data.get("redirect_uri")
+
+    if not redirect_uri:
+        raise HTTPException(
+            status_code=500,
+            detail="WorkOS did not return a redirect_uri"
+        )
+
+    #return control to workos
+    return RedirectResponse(
+        url=redirect_uri,
+        status_code=302
+    )

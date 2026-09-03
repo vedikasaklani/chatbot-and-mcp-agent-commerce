@@ -6,9 +6,8 @@ import razorpay
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Literal
 import database.database_models as db_mdl
-import models
 from fastapi import Depends, HTTPException, Request
-from models import OrderOut, PaymentInitiate
+from database.models import OrderOut, PaymentInitiate
 from database.database_models import CartItem, Product, User
 from sqlalchemy.orm import Session, joinedload
 from database.database import get_db
@@ -142,7 +141,6 @@ def create_order_agent(
 def get_all_order(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    # Never expose the account-wide Razorpay order list to an end user.
     return db.query(db_mdl.Order).filter(db_mdl.Order.user_id == user.id).all()
 
 
@@ -150,8 +148,6 @@ def get_all_order(
 def order_confirmed(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    # Razorpay's account-wide payment listing must remain an operator-only
-    # reconciliation task, not an authenticated customer-facing endpoint.
     return (
         db.query(db_mdl.Order)
         .filter(
@@ -166,22 +162,16 @@ def get_order(id:int, db:Session=Depends(get_db), user:User=Depends(get_current_
     query=db.query(db_mdl.Order).filter(db_mdl.Order.user_id==user.id).filter(db_mdl.Order.id==id)
     return query[0]
 
-
+#this returns what the frontend needs for razorpay checkout
+#it also provides guardrails- cant pay for paid/ transaction in progress order.
 def prepare_checkout_session(*, order: db_mdl.Order, user: User) -> dict:
-    """Return everything the frontend needs to open Razorpay Checkout for this order.
-
-    No payment is initiated here — Checkout.js does that client-side once the
-    customer picks a method and confirms. This function only guards against
-    re-using an order that's already paid/in-flight and hands back the
-    order/key/amount Checkout requires to render.
-    """
     if order.razorpay_payment_id:
         raise HTTPException(status_code=409, detail="A payment is already in progress for this order")
     if not order.razorpay_order_id:
         raise HTTPException(status_code=409, detail="Order has no Razorpay order id")
 
     return {
-        "key": api_key,  # public key id — safe to expose to the frontend
+        "key": api_key, 
         "amount": amount_to_paise(order.total_amount),
         "currency": order.currency,
         "order_id": order.razorpay_order_id,   # Razorpay's order id, required by Checkout
@@ -194,7 +184,7 @@ def prepare_checkout_session(*, order: db_mdl.Order, user: User) -> dict:
         "notes": {"internal_order_id": str(order.id)},
     }
 
-
+#this payment endpoint is meant for the local chatbot.
 @agent_router.post("/orders/{id}/pay")
 def order_payment(
     id: int,
@@ -212,7 +202,7 @@ def order_payment(
         raise HTTPException(status_code=400, detail="Order is not awaiting payment")
     return prepare_checkout_session(order=order, user=user)
 
-
+#for the chat agent to confirm the order and change the js accordingly
 @agent_router.post("/orders/{id}/verify")
 def verify_order_payment(
     id: int,
@@ -252,7 +242,7 @@ def verify_order_payment(
     db.refresh(order)
     return {"status": "paid", "order_id": order.id, "payment_id": razorpay_payment_id}
 
-
+#this payment endpoint is meant for the customer. 
 @customer_router.post("/orders/{order_id}/pay")
 def initiate_payment(
     order_id: int,
@@ -267,3 +257,31 @@ def initiate_payment(
     if not order or order.status != db_mdl.OrderStatus.PENDING:
         raise HTTPException(400, "Order not payable")
     return prepare_checkout_session(order=order, user=current_user)
+
+#this endpoint is specifically for external agents: external agents dont need extra info for rendering
+#they only need the payment link
+@agent_router.post("/orders/{id}/payment-link")
+def get_payment_link(
+    id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    order = (
+        db.query(db_mdl.Order)
+        .filter(db_mdl.Order.id == id, db_mdl.Order.user_id == user.id)
+        .first()
+    )
+    if not order or order.status != db_mdl.OrderStatus.PENDING:
+        raise HTTPException(400, "Order not payable")
+
+    link_response = client.payment_link.create({
+        "amount": amount_to_paise(order.total_amount),
+        "currency": "INR",
+        "accept_partial": False,
+        "reference_id": str(order.id),
+        "description": f"Order #{order.id}",
+        "customer": {"email": user.email, "contact": user.contact},
+        "notify": {"sms": True, "email": True},
+        "reminder_enable": True,
+    })
+    return {"payment_link": link_response["short_url"]}

@@ -185,10 +185,6 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "order_id": {"type": "integer"},
-                    "vpa": {
-                        "type": "string",
-                        "description": "The buyer's UPI ID, e.g. name@bank",
-                    },
                 },
                 "required": ["order_id", "vpa"],
                 "additionalProperties": False,
@@ -282,7 +278,6 @@ def execute_tool(name: str, auth_token:str, arguments: dict) -> dict:
         elif name == "initiate_payment":
             r = requests.post(
                 f"{BASE_URL}/razorpay/agent/orders/{arguments['order_id']}/pay",
-                json={"vpa": arguments["vpa"]},
                 timeout=(CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS),
                 headers=headers,
             )
