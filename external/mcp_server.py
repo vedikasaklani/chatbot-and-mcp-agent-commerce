@@ -2,7 +2,7 @@ import os
 from fastmcp import FastMCP
 from fastmcp.server.auth.providers.workos import AuthKitProvider
 from fastmcp.server.dependencies import get_access_token
-from fastapi import HTTPException, Depends
+from fastapi import HTTPException
 import requests
 
 from security import create_access_token       
@@ -12,12 +12,12 @@ from database.database_models import User
 mcp = FastMCP(
     "ecommerce-agent",
     auth=AuthKitProvider(
-        authkit_domain="https://ecommerce.authkit.app",
+        authkit_domain="https://auth.workos.com",
         base_url="https://external-mcp-server.onrender.com",  # must match what WorkOS has configured
     ),
 )
 
-BASE_URL = os.environ.get("http://localhost:8000")
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
 
 
 def _headers() -> dict:
@@ -26,16 +26,15 @@ def _headers() -> dict:
     token = get_access_token()               # verified by AuthKitProvider already
     email = token.claims.get("email")        # confirm exact claim name on first test
 
-    db = Depends(get_db)
+    db_gen = get_db()
+    db = next(db_gen)
     try:
         user = db.query(User).filter(User.email == email).first()
         if user is None:
-            # For the demo: require a pre-existing account rather than
-            # silently creating one through the MCP path.
             raise HTTPException(403, "No matching account for this email")
         return {"Authorization": f"Bearer {create_access_token(user.id)}"}
     finally:
-        db.close()
+        next(db_gen, None)  # runs get_db's cleanup/close code after the yield
 
 
 #im making the connection timeout so the agent doesnt stay stuck in loops.
