@@ -12,6 +12,7 @@ dependencies = [
     "fastmcp>=4.0.2",
     "mcp[cli]>=2.1.1",
     "requests>=2.34.2",
+    "starlette>=1.6.0",
 ]
 
 [project.scripts]

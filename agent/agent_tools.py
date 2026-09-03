@@ -216,7 +216,7 @@ TOOLS = [
 # Dispatcher to map a tool call to an actual HTTP request against the running FastAPI backend
 import requests
 
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = "https://backend-fastapi-bktw.onrender.com"
 CONNECT_TIMEOUT_SECONDS = 3.05
 READ_TIMEOUT_SECONDS = 15
 

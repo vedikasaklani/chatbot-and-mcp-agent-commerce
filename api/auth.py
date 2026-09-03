@@ -71,7 +71,7 @@ def login(
     }
 
 
-@router.get("/auth/workos/login")
+@router.get("/workos/login")
 def workos_login_page(
     external_auth_id: str = Query(...)
 ):
@@ -87,7 +87,7 @@ def workos_login_page(
     )
 
 
-@router.post("/auth/workos/login")
+@router.post("/workos/login")
 def workos_login(
     external_auth_id: str = Form(...),
     username: str = Form(...),

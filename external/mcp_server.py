@@ -17,7 +17,7 @@ mcp = FastMCP(
     ),
 )
 
-BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
+BASE_URL = os.environ.get("BASE_URL", "https://backend-fastapi-bktw.onrender.com")
 
 
 def _headers() -> dict:

@@ -40,7 +40,10 @@ form.addEventListener("submit", async (e) => {
   try {
     const res = await fetch(REGISTER_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
+      },
       body: JSON.stringify({ username, password }),
     });
 

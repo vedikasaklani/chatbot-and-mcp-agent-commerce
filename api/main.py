@@ -29,6 +29,7 @@ app.add_middleware(
     allow_origins=[
         "http://127.0.0.1:3000",
         "http://localhost:3000",
+        "https://agent-commerce-payout-automation.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],

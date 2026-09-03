@@ -1,64 +1,6 @@
 "use strict";
 
-/**
- * ============================================================================
- * AGENT CONFIRMATION POINTS
- * ============================================================================
- * These sections have been verified/confirmed with the backend APIs:
- * 
- * 1. [✓] CHAT ENDPOINT - POST /chat
- *    - Input: { messages: string }
- *    - Output: { reply: string, products?: [...], cart?: {...}, order?: {...} }
- *    - Status: CONFIRMED (ChatInput model expects "messages" field)
- * 
- * 2. [✓] PRODUCT FIELDS - GET /products
- *    - Response: [{ pname, pid, price, stock, seller, categories, url }]
- *    - Status: CONFIRMED from database_models.py
- * 
- * 3. [✓] ADD TO CART ENDPOINT
- *    - Endpoint: POST /cart/{product_id}/{quantity}
- *    - Response: { id, quantity, cart_id, product_id }
- *    - Status: CONFIRMED from main.py
- * 
- * 4. [✓] CART RESPONSE FORMAT
- *    - Endpoint: GET /cart
- *    - Response: { user, cart, total_amt, cart_items: [{id, product_id, name, price, quantity, subtotal}] }
- *    - Status: CONFIRMED from main.py GET /cart
- * 
- * 5. [✓] CART ITEM REMOVAL
- *    - Endpoint: POST /cart/{product_id}/{quantity}/delete
- *    - Response: { detail: "Cart updated." }
- *    - Status: CONFIRMED from main.py
- * 
- * 6. [✓] ORDER RESPONSE FORMAT
- *    - Response: { id, status: OrderStatus, total_amount, currency, items }
- *    - Status: CONFIRMED from OrderOut model in models.py
- * 
- * 7. [✓] ORDER STATUS VALUES
- *    - Valid values: CREATED, PENDING, PAID, FAILED, CANCELLED
- *    - Status: CONFIRMED from OrderStatus enum in database_models.py
- * 
- * 8. [✓] RAZORPAY CHECKOUT SESSION FORMAT
- *    - Endpoint: POST /razorpay/agent/orders/{id}/pay
- *    - Response: { key, amount, currency, order_id, name, description, prefill, notes }
- *    - Status: CONFIRMED from prepare_checkout_session() in razorpay_integration.py
- * 
- * 9. [✓] ORDER CREATION FROM CART
- *    - Endpoint: POST /razorpay/agent/orders
- *    - Response: OrderOut (id, status, total_amount, currency, items)
- *    - Status: CONFIRMED from razorpay_integration.py
- * 
- * 10. [✓] ORDER STATUS CHECK
- *     - Endpoint: GET /razorpay/agent/orders/{id}
- *     - Response: Order object with current status
- *     - Status: CONFIRMED from razorpay_integration.py get_order()
- * ============================================================================
- */
-
-const API_BASE = window.location.port === "8000"
-  ? ""
-  : `${window.location.protocol}//${window.location.hostname}:8000`;
-
+const API_BASE = "https://backend-fastapi-bktw.onrender.com";
 const API = {
   LOGIN_URL: `${API_BASE}/auth/login`,
   REGISTER_URL: `${API_BASE}/auth/register`,
@@ -75,18 +17,11 @@ const API = {
   PAY_URL: (orderId) => `${API_BASE}/razorpay/agent/orders/${orderId}/pay`,
   VERIFY_PAYMENT_URL: (orderId) => `${API_BASE}/razorpay/agent/orders/${orderId}/verify`,
 };
-
-/* =====================================================================
- * State
- * ===================================================================== */
 const state = {
   authToken: sessionStorage.getItem("authToken") || null,
-  cart: { items: [], total: 0 }, // shape assumed — see renderCart()
+  cart: { items: [], total: 0 }, 
 };
 
-/* =====================================================================
- * DOM refs
- * ===================================================================== */
 const loginScreen = document.getElementById("login-screen");
 const appScreen = document.getElementById("app-screen");
 const loginForm = document.getElementById("login-form");
@@ -107,9 +42,6 @@ const cartItemsEl = document.getElementById("cart-items");
 const cartTotalEl = document.getElementById("cart-total");
 const cartCheckoutBtn = document.getElementById("cart-checkout");
 
-/* =====================================================================
- * Boot
- * ===================================================================== */
 async function boot() {
   if (state.authToken) {
     // Verify token is valid by making a test API call
@@ -150,9 +82,6 @@ function showApp() {
   composerInput.focus();
 }
 
-/* =====================================================================
- * Auth
- * ===================================================================== */
 loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   loginError.hidden = true;
@@ -177,24 +106,68 @@ loginForm.addEventListener("submit", async (e) => {
   }
 });
 
+// Detect whether this login was initiated by WorkOS
+const params = new URLSearchParams(window.location.search);
+const externalAuthId = params.get("external_auth_id");
+
 async function login(username, password) {
-  // CONFIRM: adjust body encoding / field names to match the real route.
-  const body = new URLSearchParams();
-  body.set("username", username);
-  body.set("password", password);
+  const formData = new URLSearchParams();
 
-  const res = await fetch(API.LOGIN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
+  formData.append("username", username);
+  formData.append("password", password);
 
-  if (!res.ok) {
-    throw new Error(res.status === 401 ? "Incorrect email or password." : "Sign in failed.");
+  if (externalAuthId) {
+      // WorkOS OAuth login
+      formData.append("external_auth_id", externalAuthId);
+
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = `${API_BASE}/auth/workos/login`;
+
+      const externalIdInput = document.createElement("input");
+      externalIdInput.type = "hidden";
+      externalIdInput.name = "external_auth_id";
+      externalIdInput.value = externalAuthId;
+
+      const usernameInput = document.createElement("input");
+      usernameInput.type = "hidden";
+      usernameInput.name = "username";
+      usernameInput.value = username;
+
+      const passwordInput = document.createElement("input");
+      passwordInput.type = "hidden";
+      passwordInput.name = "password";
+      passwordInput.value = password;
+
+      form.appendChild(externalIdInput);
+      form.appendChild(usernameInput);
+      form.appendChild(passwordInput);
+
+      document.body.appendChild(form);
+      form.submit();
+      return;
   }
-  const data = await res.json();
-  if (!data.access_token) throw new Error("Login response had no access_token.");
-  return data.access_token;
+  else{
+    const body = new URLSearchParams();
+    body.set("username", username);
+    body.set("password", password);
+
+    const res = await fetch(API.LOGIN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "ngrok-skip-browser-warning": "true",
+      },
+      body,
+    });
+
+    if (!res.ok) {
+      throw new Error(res.status === 401 ? "Incorrect email or password." : "Sign in failed.");
+    }
+    const data = await res.json();
+    if (!data.access_token) throw new Error("Login response had no access_token.");
+    return data.access_token;
+  }
 }
 
 logoutBtn.addEventListener("click", () => {
@@ -205,6 +178,7 @@ logoutBtn.addEventListener("click", () => {
 });
 
 function authHeaders(extra = {}) {
+  extra["ngrok-skip-browser-warning"] = "true";
   return { Authorization: `Bearer ${state.authToken}`, ...extra };
 }
 
@@ -219,9 +193,6 @@ function handleAuthFailure(res) {
   return false;
 }
 
-/* =====================================================================
- * Chat
- * ===================================================================== */
 composer.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = composerInput.value.trim();
@@ -265,10 +236,6 @@ async function sendChatMessage(text) {
   return res.json();
 }
 
-/**
- * /chat returns { final_response, trace, turns_used } from run_agent.
- * Older comments assumed { reply, products, cart, order } — support both.
- */
 function renderAssistantReply(payload) {
   if (!payload || typeof payload !== "object") return;
 
@@ -400,7 +367,6 @@ function renderProductCard(p) {
   return card;
 }
 
-/* ---- order / payment card (rendered inline in chat) ---- */
 function addOrderCard(order) {
   const wrap = document.createElement("div");
   wrap.className = "msg msg-assistant";
@@ -418,8 +384,6 @@ function addOrderCard(order) {
 }
 
 function renderOrderCard(order) {
-  // Backend order schema: { id, status: OrderStatus, total_amount, currency, items: [...] }
-  // Status enum: CREATED, PENDING, PAID, FAILED, CANCELLED
   const card = document.createElement("div");
   card.className = "order-card";
   card.dataset.orderId = order.id;
@@ -472,12 +436,6 @@ function statusLabel(status) {
   return "Awaiting payment";
 }
 
-/* =====================================================================
- * Razorpay Checkout integration
- * Adapted from the snippet you provided — same endpoints, same
- * "webhook is the only source of truth" contract. Differences from the
- * original snippet, and why, are called out inline.
- * ===================================================================== */
 async function payForOrder(orderId, ui) {
   let session;
   try {
@@ -505,12 +463,6 @@ async function payForOrder(orderId, ui) {
     amount: session.amount,
     currency: session.currency,
     order_id: session.order_id,
-
-    // CONFIRM: README's prepare_checkout_session() return shape is
-    // {key, amount, currency, order_id, prefill, notes} — it does NOT
-    // list "name"/"description" fields that the original snippet reads.
-    // Falling back to generic copy so Checkout still opens even if the
-    // backend omits them; confirm whether the backend should add them.
     name: session.name || "Order checkout",
     description: session.description || `Order #${orderId}`,
 
@@ -619,10 +571,7 @@ function resetPayButton(ui, label) {
   ui.payBtn.disabled = false;
   ui.payBtn.textContent = label;
 }
-
-/* =====================================================================
- * Cart drawer
- * ===================================================================== */
+//cart
 cartToggle.addEventListener("click", openCart);
 cartClose.addEventListener("click", closeCart);
 cartBackdrop.addEventListener("click", closeCart);
@@ -724,11 +673,6 @@ async function removeCartItem(item) {
   }
 }
 
-/**
- * Adds a product to the cart via the backend.
- * Backend endpoint: POST /cart/{product_id}/{quantity}
- * Response: { id, quantity, cart_id, product_id }
- */
 async function addProductToCart(productId, productName, price) {
   try {
     const res = await fetch(API.ADD_TO_CART_URL(productId, 1), {
@@ -767,9 +711,6 @@ cartCheckoutBtn.addEventListener("click", async () => {
   }
 });
 
-/* =====================================================================
- * Utilities
- * ===================================================================== */
 function formatRupees(amount) {
   const n = typeof amount === "number" ? amount : Number(amount) || 0;
   return "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
