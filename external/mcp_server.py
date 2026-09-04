@@ -4,6 +4,7 @@ from fastmcp.server.auth.providers.workos import AuthKitProvider
 from fastmcp.server.dependencies import get_access_token
 from fastapi import HTTPException
 import requests
+from sqlalchemy import func
 
 from security import create_access_token       
 from database.database import get_db
@@ -24,15 +25,25 @@ def _headers() -> dict:
     """Map the WorkOS-verified caller to one of OUR users, then mint a
     normal backend JWT for calling our own FastAPI API."""
     token = get_access_token()               # verified by AuthKitProvider 
-    email = token.claims.get("email")        
+    email = token.claims.get("email")
+    if not isinstance(email, str) or not email.strip():
+        raise HTTPException(403, "Authenticated WorkOS user has no email claim")
+    email = email.strip().lower()
 
     # we have to drive the generator ourselves to get a real Session.
     db_gen = get_db()
     db = next(db_gen)
     try:
-        user = db.query(User).filter(User.email == email).first()
+        user = (
+            db.query(User)
+            .filter(func.lower(func.trim(User.email)) == email)
+            .first()
+        )
         if user is None:
-            raise HTTPException(403, "No matching account for this email")
+            raise HTTPException(
+                403,
+                "No local account is linked to the authenticated WorkOS email",
+            )
         return {"Authorization": f"Bearer {create_access_token(user.id)}"}
     finally:
         next(db_gen, None)  

@@ -50,8 +50,9 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
+    email = form_data.username.strip().lower()
     user = db.query(database_models.User).filter(
-        database_models.User.email == form_data.username
+        database_models.User.email == email
     ).first()
 
     if not user or not verify_password(
@@ -95,6 +96,7 @@ def workos_login(
     db: Session = Depends(get_db),
 ):
     #authenticate using existing : 
+    username = username.strip().lower()
 
     user = (
         db.query(database_models.User)
