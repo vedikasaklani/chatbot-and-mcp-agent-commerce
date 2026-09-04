@@ -1,42 +1,96 @@
 # Agent Commerce Payment Automation
 
-An AI-assisted commerce application that lets authenticated users discover products, manage a cart, place Razorpay orders, and retrieve payment links. The project also exposes the commerce actions as OAuth-protected Model Context Protocol (MCP) tools for external AI clients.
+An AI-assisted commerce application that lets authenticated users discover products, manage a cart, place Razorpay orders, and retrieve payment links. The project also exposes the commerce capabilities through an OAuth-protected Model Context Protocol (MCP) server for external AI clients.
+
+## Project Overview
+
+The application is split into three deployed services:
+
+- **Frontend** — static HTML/CSS/JavaScript browser client
+- **FastAPI Backend** — authentication, commerce APIs, AI agent, database access, and Razorpay integration
+- **MCP Server** — OAuth-protected MCP interface for external AI clients
+
+PostgreSQL provides persistent application data, while WorkOS AuthKit/Connect handles the OAuth flow used by external MCP clients.
 
 ## Why This Project Is Useful
 
-- **Conversational commerce**: the agent can search products, update carts, and place orders through tool calls.
-- **FastAPI backend**: REST endpoints handle authentication, products, carts, orders, reviews, and Razorpay payments.
-- **MCP integration**: external clients can use the same commerce capabilities through a WorkOS/AuthKit-protected server.
-- **Persistent order workflow**: SQLAlchemy and Alembic manage PostgreSQL data and schema migrations.
-- **Static frontend**: the `frontend/` directory contains a lightweight browser client for login, chat, cart management, and checkout.
+- **Conversational commerce:** an AI client can search products, manage carts, place orders, and retrieve payment links through tool calls.
+- **FastAPI backend:** REST endpoints handle authentication, products, carts, orders, reviews, ratings, and Razorpay payments.
+- **WorkOS-protected MCP:** external AI clients can access the same commerce operations through OAuth-protected MCP tools.
+- **Persistent data:** SQLAlchemy and Alembic manage PostgreSQL models and schema migrations.
+- **Browser client:** the `frontend/` directory contains a lightweight client for registration, login, cart management, and checkout.
 
 ## Architecture
 
+```text
+                         External AI Client
+                                │
+                                │ OAuth
+                                ▼
+                         WorkOS AuthKit
+                                │
+                                ▼
+                    ┌────────────────────────┐
+                    │      MCP Server        │
+                    │ external/mcp_server.py │
+                    │    Render Web Service  │
+                    └────────────┬───────────┘
+                                 │ HTTPS
+                                 ▼
+                    ┌────────────────────────┐
+                    │     FastAPI Backend     │
+                    │       api/main.py       │
+                    │    Render Web Service   │
+                    └──────────┬───────┬─────┘
+                               │       │
+                               ▼       ▼
+                         PostgreSQL   Razorpay
+
+                    ┌────────────────────────┐
+                    │       Frontend         │
+                    │       frontend/        │
+                    │    Render Static Site  │
+                    └────────────┬───────────┘
+                                 │ HTTPS
+                                 ▼
+                           FastAPI Backend
+```
+
+## Repository Structure
+
 | Component | Location | Purpose |
 | --- | --- | --- |
-| FastAPI API | `api/main.py` | Application routes and middleware |
-| Database models and migrations | `database/` | SQLAlchemy models and Alembic revisions |
-| AI agent | `agent/` | Groq-compatible tool-calling loop |
+| FastAPI API | `api/main.py` | Application entry point, routes, and middleware |
+| Database | `database/` | SQLAlchemy models, database connection, and Alembic migrations |
+| AI agent | `agent/` | AI/tool-calling logic |
 | MCP server | `external/mcp_server.py` | OAuth-protected MCP tools for external clients |
-| Browser client | `frontend/` | Static JavaScript frontend |
-| MCP visibility check | `test.py` | Verifies the deployed server exposes expected tools |
+| Browser client | `frontend/` | Static HTML/CSS/JavaScript frontend |
+| MCP check | `test.py` | Verifies that the MCP server exposes the expected tools |
 
-## Getting Started
+## Getting Started Locally
 
 ### Prerequisites
 
-- Python 3.12 or newer
+- Python 3.12+
 - PostgreSQL
 - [`uv`](https://docs.astral.sh/uv/)
-- Razorpay, WorkOS/AuthKit, and Groq credentials for the corresponding features
+- Razorpay credentials
+- WorkOS/AuthKit credentials
+- Groq credentials
 
-### Install
+### Install dependencies
+
+From the repository root:
 
 ```bash
 uv sync
 ```
 
-Copy the required configuration into a local `.env` file. At minimum, the backend expects:
+### Environment variables
+
+Create a local `.env` file.
+
+Typical backend configuration:
 
 ```dotenv
 DATABASE_URL=postgresql+psycopg2://user:password@localhost:5432/database
@@ -47,17 +101,41 @@ razorpay_secret=your-razorpay-secret
 razorpay_webhook_secret=your-webhook-secret
 ```
 
-Never commit `.env` files or credentials.
+For the MCP server, `BASE_URL` should point to the backend it calls:
 
-### Prepare the database
+```dotenv
+BASE_URL=http://127.0.0.1:8000
+```
 
-Configure Alembic to use the same PostgreSQL URL as the application, then run:
+When using the deployed backend, set `BASE_URL` to the deployed backend URL instead.
+
+**Never commit `.env` files, API keys, passwords, or database credentials.**
+
+## Database Setup
+
+The application uses PostgreSQL with SQLAlchemy and Alembic.
+
+Run the latest migrations from the repository root:
 
 ```bash
 uv run alembic upgrade head
 ```
 
-### Run the API
+For a new deployment, run migrations against the deployment PostgreSQL database before relying on the API.
+
+### Local vs. production database
+
+Local development can use a local PostgreSQL URL:
+
+```dotenv
+DATABASE_URL=postgresql+psycopg2://user:password@localhost:5432/database
+```
+
+The deployed FastAPI service should use the **Render PostgreSQL Internal Database URL** in its Render environment variables.
+
+Do not hard-code the production database URL in source code or `alembic.ini`.
+
+## Run the Backend Locally
 
 From the repository root:
 
@@ -65,60 +143,271 @@ From the repository root:
 uv run uvicorn api.main:app --reload
 ```
 
-The API will be available at `http://127.0.0.1:8000`. FastAPI's interactive documentation is available at `/docs`.
+The API will normally be available at:
 
-### Run the MCP server
-
-```bash
-uv run python external/mcp_server.py
+```text
+http://127.0.0.1:8000
 ```
 
-Set `BASE_URL` when the MCP server needs to call a remote backend:
+FastAPI's interactive documentation is available at:
 
-```bash
-BASE_URL=https://backend-fastapi-bktw.onrender.com uv run python external/mcp_server.py
+```text
+http://127.0.0.1:8000/docs
 ```
 
-The MCP server uses the `PORT` environment variable when deployed and defaults to port `9000` locally.
+## Run the MCP Server Locally
 
-### Verify MCP tools
+The MCP server uses Streamable HTTP.
 
-The check requires an OAuth-capable MCP client:
+From the repository root:
+
+```bash
+uv run python -m external.mcp_server
+```
+
+The MCP server uses port `9000` by default locally and uses the `PORT` environment variable when deployed to Render.
+
+The server should bind to `0.0.0.0` and use the deployment port, for example:
+
+```python
+host="0.0.0.0"
+port=int(os.environ.get("PORT", 9000))
+```
+
+## MCP Authentication with WorkOS
+
+The MCP server uses WorkOS AuthKit through FastMCP's `AuthKitProvider`.
+
+The high-level authentication flow is:
+
+```text
+External MCP Client
+        │
+        ▼
+WorkOS AuthKit
+        │
+        │ external_auth_id
+        ▼
+Backend /auth/workos/login
+        │
+        ▼
+Frontend login UI
+        │
+        │ existing email/password authentication
+        ▼
+Backend
+        │
+        │ /authkit/oauth2/complete
+        ▼
+WorkOS
+        │
+        ▼
+OAuth flow completes
+        │
+        ▼
+MCP Client receives OAuth credentials
+```
+
+The backend's GET endpoint accepts `external_auth_id`, redirects the user to the frontend login UI, and preserves that ID through the login flow. After successful authentication, the backend completes the WorkOS flow and returns the redirect supplied by WorkOS.
+
+### WorkOS configuration
+
+Configure the WorkOS Login URI to point to the **deployed backend**, for example:
+
+```text
+https://YOUR-BACKEND.onrender.com/auth/workos/login
+```
+
+The MCP server's AuthKit provider should use the real AuthKit domain and deployed MCP base URL:
+
+```python
+AuthKitProvider(
+    authkit_domain="https://YOUR-PROJECT.authkit.app",
+    base_url="https://YOUR-MCP.onrender.com",
+)
+```
+
+Replace the placeholders with the values from your WorkOS project and Render services.
+
+The MCP endpoint is:
+
+```text
+https://YOUR-MCP.onrender.com/mcp
+```
+
+## Render Deployment
+
+The application is deployed as separate Render services.
+
+### 1. FastAPI Backend
+
+Create a **Web Service** using the repository root.
+
+Recommended settings:
+
+```text
+Root Directory:        leave blank
+Build Command:         pip install -r requirements.txt
+Start Command:         uvicorn api.main:app --host 0.0.0.0 --port $PORT
+```
+
+Configure the required production environment variables in Render, including:
+
+```text
+DATABASE_URL
+GROQ_API_KEY
+WORKOS_API_KEY
+razorpay_key
+razorpay_secret
+razorpay_webhook_secret
+```
+
+For the backend, use the **Render PostgreSQL Internal Database URL** for `DATABASE_URL`.
+
+### 2. MCP Server
+
+Create a separate **Web Service** using the same repository.
+
+Because `external/mcp_server.py` imports shared project modules such as `security` and `database`, keep the Render Root Directory at the repository root rather than setting it to `external`.
+
+Recommended settings:
+
+```text
+Root Directory:        leave blank
+Build Command:         pip install -r external/requirements.txt
+Start Command:         python -m external.mcp_server
+```
+
+Configure environment variables such as:
+
+```text
+BASE_URL=https://YOUR-BACKEND.onrender.com
+WORKOS_AUTHKIT_DOMAIN=https://YOUR-PROJECT.authkit.app
+MCP_BASE_URL=https://YOUR-MCP.onrender.com
+```
+
+The MCP service must bind to `0.0.0.0` and use Render's `PORT` environment variable.
+
+### 3. Frontend
+
+Create a **Static Site** for the `frontend/` directory.
+
+For the current plain HTML/CSS/JavaScript frontend:
+
+```text
+Root Directory:        frontend
+Build Command:         leave blank
+Publish Directory:     .
+```
+
+Set the frontend API base URL to the deployed backend URL, for example:
+
+```javascript
+const API_BASE = "https://YOUR-BACKEND.onrender.com";
+```
+
+The frontend is not a Python application, so it does not require a `requirements.txt` file.
+
+## Production Service URLs
+
+The deployed services follow this pattern:
+
+```text
+Frontend
+https://YOUR-FRONTEND.onrender.com
+
+Backend
+https://YOUR-BACKEND.onrender.com
+
+MCP
+https://YOUR-MCP.onrender.com/mcp
+```
+
+The backend is the shared API used by both the browser client and the MCP server.
+
+## Verify MCP Tools
+
+The repository includes `test.py` for checking MCP tool visibility.
+
+Run from the repository root:
 
 ```bash
 uv run python test.py
 ```
 
-It verifies that the expected product, cart, order, payment, and ratings tools are visible.
+The check requires an OAuth-capable MCP client and helps distinguish MCP discovery/authentication problems from backend request failures.
 
-## Main Capabilities
+The MCP server exposes tools including:
 
-The backend provides routes for:
+- `search_products`
+- `get_product`
+- `add_to_cart`
+- `view_cart`
+- `create_order`
+- `get_payment_link`
+- `check_order_status`
+- `get_ratings`
 
-- Local and WorkOS authentication
+## Main API Capabilities
+
+The backend supports:
+
+- Local user registration and login
+- WorkOS OAuth login for external clients
 - Product search and product details
-- Cart creation, updates, and removal
+- Cart creation and updates
 - Customer and agent order creation
 - Razorpay payment links and payment verification
 - Product reviews and ratings
-- AI chat through `/chat`
+- AI-assisted commerce through `/chat`
 
-The MCP server exposes these operations as tools including `search_products`, `get_product`, `add_to_cart`, `view_cart`, `create_order`, `get_payment_link`, `check_order_status`, and `get_ratings`.
+## Payment Flow
 
-## Deployment Notes
+Razorpay is used for payment processing after an order is created.
 
-- Deploy the FastAPI application with the start target `api.main:app`.
-- Run database migrations against the deployment PostgreSQL instance before starting the API.
-- Configure WorkOS/AuthKit callback URLs to match the deployed MCP server and frontend.
-- Set the frontend API base URL in `frontend/app.js` to the deployed backend before publishing the static files.
-- Keep backend credentials and database URLs in the hosting provider's environment settings.
+The backend is responsible for order creation, payment-link generation, webhook handling, and payment verification, while the AI/MCP layer can expose the appropriate commerce actions to an external client.
 
-## Getting Help
+## Database Migration and Data Transfer
 
-- Use FastAPI's local `/docs` endpoint to inspect available API schemas.
-- Check the service logs first for database migration, OAuth callback, and Razorpay errors.
-- Run `test.py` to distinguish MCP tool discovery problems from backend request failures.
-- Open an issue in the project repository with the failing endpoint, status code, and sanitized logs. Do not include tokens, passwords, or private database URLs.
+Schema changes should be managed through Alembic:
+
+```bash
+uv run alembic upgrade head
+```
+
+For moving an existing local PostgreSQL database to Render, PostgreSQL dump/restore can be used. When restoring into the managed Render database, restore without trying to recreate the local `postgres` ownership/privilege metadata, for example:
+
+```bash
+pg_restore --no-owner --no-privileges -d "YOUR_RENDER_EXTERNAL_DATABASE_URL" backup.dump
+```
+
+Use the Render **External Database URL** from the local machine for the transfer. The deployed backend should use the Render **Internal Database URL** afterward.
+
+## Security Notes
+
+- Keep `.env` files out of Git.
+- Store production secrets in Render environment variables.
+- Do not commit WorkOS, Groq, Razorpay, or database credentials.
+- Do not expose database credentials in logs or API responses.
+- Treat OAuth redirect URLs, bearer tokens, and MCP endpoints as sensitive security boundaries.
+- Use sanitized logs when reporting deployment issues.
+
+## Development Workflow
+
+A typical local workflow is:
+
+```bash
+uv sync
+uv run alembic upgrade head
+uv run uvicorn api.main:app --reload
+uv run python -m external.mcp_server
+```
+
+Then run the MCP verification check when needed:
+
+```bash
+uv run python test.py
+```
 
 ## Maintainer and Contributions
 
@@ -127,8 +416,8 @@ This project is maintained by **vedikasaklani**.
 To contribute:
 
 1. Create a focused branch.
-2. Make the smallest change that addresses the issue.
-3. Run the relevant checks, such as `uv run python test.py` or a targeted test.
-4. Open a pull request describing the behavior change and validation performed.
+2. Make the smallest change needed.
+3. Run the relevant checks.
+4. Open a pull request describing the behavior change and validation.
 
 Please keep secrets out of commits and avoid unrelated formatting changes.
