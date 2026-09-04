@@ -2,16 +2,16 @@ from dotenv import load_dotenv
 load_dotenv()
 import os
 import time
+import logging
 import razorpay
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Literal
 import database.database_models as db_mdl
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, APIRouter
 from database.models import OrderOut, PaymentInitiate
 from database.database_models import CartItem, Product, User
 from sqlalchemy.orm import Session, joinedload, contains_eager
 from database.database import get_db
-from fastapi import APIRouter
 from security import get_current_user
 from utils import get_cart
 
@@ -33,6 +33,7 @@ client = razorpay.Client(auth=(api_key, api_secret))
 client.enable_retry(True)
 
 MAX_AGENT_ORDER_AMOUNT = 10000
+logger = logging.getLogger(__name__)
 
 
 def amount_to_paise(amount: Decimal | float) -> int:
@@ -115,6 +116,13 @@ def create_order(db: Session, user: User, cart: db_mdl.Cart, initiated_by: Liter
         db.refresh(order)
     except Exception:
         db.rollback()
+        logger.exception(
+            "Failed to persist order after Razorpay order creation "
+            "(user_id=%s, cart_id=%s, razorpay_order_id=%s)",
+            user.id,
+            cart.id,
+            order.razorpay_order_id,
+        )
         raise HTTPException(status_code=500, detail="Could not save the order")
 
     return order

@@ -88,7 +88,14 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("Users.id"), nullable=False)
-    status = Column(Enum(OrderStatus), default=OrderStatus.CREATED)
+    status = Column(
+        Enum(
+            OrderStatus,
+            values_callable=lambda enum_type: [member.value for member in enum_type],
+            name="orderstatus",
+        ),
+        default=OrderStatus.CREATED,
+    )
     total_amount = Column(Float, nullable=False)          # in rupees
     currency = Column(String, default="INR")
     razorpay_order_id = Column(String, nullable=True)      # filled in step 2
