@@ -4,16 +4,19 @@ Agent loop using Groq's OpenAI-compatible client for tool calling.
 import os
 import json
 import time
+import logging
 from dotenv import load_dotenv
 from openai import OpenAI
 from agent.prompts import SYSTEM_PROMPT
 from agent.agent_tools import TOOLS, execute_tool
 
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
 client = OpenAI(
-    base_url="https://api.groq.com/openai/v1",
-    api_key=os.environ["GROQ_API_KEY"],
+    base_url="https://router.huggingface.co/v1",
+    api_key=os.environ["HF_TOKEN"],
     timeout=30.0,
 )
 
@@ -113,8 +116,32 @@ def run_agent(user_message: str, token:str, session_id: str, max_turns: int = 5)
             "hit_max_turns": True,
         }
 
-    except Exception:
-            return {
+    except Exception as exc:
+        # Groq uses OpenAI-compatible errors. These headers distinguish rate
+        # limit types without logging credentials or the user's prompt.
+        response = getattr(exc, "response", None)
+        headers = getattr(response, "headers", {}) or {}
+        rate_limit_headers = {
+            name: headers.get(name)
+            for name in (
+                "retry-after",
+                "x-ratelimit-limit-requests",
+                "x-ratelimit-remaining-requests",
+                "x-ratelimit-reset-requests",
+                "x-ratelimit-limit-tokens",
+                "x-ratelimit-remaining-tokens",
+                "x-ratelimit-reset-tokens",
+                "x-request-id",
+            )
+            if headers.get(name) is not None
+        }
+        logger.exception(
+            "Groq agent request failed: status=%s body=%r rate_limit_headers=%s",
+            getattr(exc, "status_code", getattr(response, "status_code", None)),
+            getattr(exc, "body", None),
+            rate_limit_headers,
+        )
+        return {
             "final_response": "Something went wrong on my end — please try that again.",
             "trace": trace,
             "error": True,
