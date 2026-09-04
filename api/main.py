@@ -44,7 +44,7 @@ def chat(
     user: database_models.User = Depends(get_current_user),
     db:Session=Depends(get_db)
 ):
-    result=run_agent(payload.messages, session_id=x_chat_session_id)
+    result=run_agent(payload.message, token=auth_token, session_id=x_chat_session_id)
     order_id = next(
         (e["result"]["id"] for e in result["trace"]
          if e["tool"] == "create_order" and isinstance(e["result"], dict) and "id" in e["result"]),
