@@ -20,7 +20,7 @@ client = OpenAI(
     timeout=30.0,
 )
 
-MODEL = "meta-llama/llama-prompt-guard-2-22m"
+MODEL = "Qwen/Qwen3.8-27B:ovhcloud"
 
 SESSION_HISTORY_TTL_SECONDS = 60 * 60 * 2
 

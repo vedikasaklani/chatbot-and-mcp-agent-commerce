@@ -186,7 +186,7 @@ TOOLS = [
                 "properties": {
                     "order_id": {"type": "integer"},
                 },
-                "required": ["order_id", "vpa"],
+                "required": ["order_id"],
                 "additionalProperties": False,
             },
         },
