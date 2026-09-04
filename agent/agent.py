@@ -17,7 +17,7 @@ client = OpenAI(
     timeout=30.0,
 )
 
-MODEL = "qwen/qwen3.8-27b"
+MODEL = "meta-llama/llama-prompt-guard-2-22m"
 
 SESSION_HISTORY_TTL_SECONDS = 60 * 60 * 2
 
