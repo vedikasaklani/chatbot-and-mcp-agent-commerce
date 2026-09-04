@@ -46,6 +46,13 @@ def _timeout():
     return (CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS)
 
 
+def _response_detail(response: requests.Response) -> object:
+    try:
+        return response.json()
+    except ValueError:
+        return response.text or "Backend returned an empty response"
+
+
 @mcp.tool()
 def search_products(q: str = None, category: str = None, min_price: float = None,
                      max_price: float = None, in_stock: bool = None) -> dict:
@@ -59,7 +66,7 @@ def search_products(q: str = None, category: str = None, min_price: float = None
 
     r = requests.get(f"{BASE_URL}/products", params=params, headers=_headers(), timeout=_timeout())
     if r.status_code >= 400:
-        return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
+        return {"error": True, "status_code": r.status_code, "detail": _response_detail(r)}
     return {"products" : r.json()}
 
 
@@ -106,7 +113,7 @@ def create_order() -> dict:
     for agent-initiated orders -- if this returns a 400, tell the user their order exceeds it."""
     r = requests.post(f"{BASE_URL}/razorpay/agent/orders", headers=_headers(), timeout=_timeout())
     if r.status_code >= 400:
-        return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
+        return {"error": True, "status_code": r.status_code, "detail": _response_detail(r)}
     return {"order": r.json()}
 
 
