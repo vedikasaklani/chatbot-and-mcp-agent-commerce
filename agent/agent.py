@@ -76,7 +76,6 @@ def run_agent(user_message: str, token:str, session_id: str, max_turns: int = 8)
                     "turns_used": turn + 1,
                 }
 
-            # Assistant's tool-call message MUST go in before the tool results
             messages.append({
                 "role": "assistant",
                 "content": message.content,
@@ -108,7 +107,8 @@ def run_agent(user_message: str, token:str, session_id: str, max_turns: int = 8)
                     "content": json.dumps(result),
                 })
 
-        conversation_history[session_id] = (messages, time.monotonic())  # commit even on max-turns cutoff
+            conversation_history[session_id] = (messages, time.monotonic())
+
         return {
             "final_response": "I wasn't able to complete this within the allowed steps.",
             "trace": trace,
@@ -117,26 +117,12 @@ def run_agent(user_message: str, token:str, session_id: str, max_turns: int = 8)
         }
 
     except Exception as exc:
-        # Groq uses OpenAI-compatible errors. These headers distinguish rate
-        # limit types without logging credentials or the user's prompt.
         response = getattr(exc, "response", None)
         headers = getattr(response, "headers", {}) or {}
         rate_limit_headers = {
             name: headers.get(name)
-            for name in (
-                "retry-after",
-                "x-ratelimit-limit-requests",
-                "x-ratelimit-remaining-requests",
-                "x-ratelimit-reset-requests",
-                "x-ratelimit-limit-tokens",
-                "x-ratelimit-remaining-tokens",
-                "x-ratelimit-reset-tokens",
-                "x-request-id",
-            )
-            if headers.get(name) is not None
         }
         logger.exception(
-            "Groq agent request failed: status=%s body=%r rate_limit_headers=%s",
             getattr(exc, "status_code", getattr(response, "status_code", None)),
             getattr(exc, "body", None),
             rate_limit_headers,
