@@ -6,6 +6,7 @@ const API = {
   REGISTER_URL: `${API_BASE}/auth/register`,
 
   CHAT_URL: `${API_BASE}/chat`,
+  CHAT_SESSION_URL: `${API_BASE}/chat/session`,
   PRODUCTS_URL: `${API_BASE}/products`,
   PRODUCTS_BY_ID_URL: (id) => `${API_BASE}/products/${id}`,
 
@@ -19,8 +20,11 @@ const API = {
 };
 const state = {
   authToken: sessionStorage.getItem("authToken") || null,
+  chatSessionId: sessionStorage.getItem("chatSessionId") || crypto.randomUUID(),
   cart: { items: [], total: 0 }, 
 };
+
+sessionStorage.setItem("chatSessionId", state.chatSessionId);
 
 const loginScreen = document.getElementById("login-screen");
 const appScreen = document.getElementById("app-screen");
@@ -171,8 +175,10 @@ async function login(username, password) {
 }
 
 logoutBtn.addEventListener("click", () => {
+  clearChatSession();
   state.authToken = null;
   sessionStorage.removeItem("authToken");
+  sessionStorage.removeItem("chatSessionId");
   messagesEl.innerHTML = "";
   showLogin();
 });
@@ -181,6 +187,24 @@ function authHeaders(extra = {}) {
   extra["ngrok-skip-browser-warning"] = "true";
   return { Authorization: `Bearer ${state.authToken}`, ...extra };
 }
+
+function chatHeaders(extra = {}) {
+  return authHeaders({ "X-Chat-Session-Id": state.chatSessionId, ...extra });
+}
+
+function clearChatSession() {
+  if (!state.authToken || !state.chatSessionId) return;
+
+  // keepalive lets this request complete during page shutdown. The server also
+  // expires orphaned sessions in case a browser terminates it early.
+  fetch(API.CHAT_SESSION_URL, {
+    method: "DELETE",
+    headers: chatHeaders(),
+    keepalive: true,
+  }).catch(() => {});
+}
+
+window.addEventListener("pagehide", clearChatSession);
 
 /** Redirects to login on a 401 so an expired token doesn't strand the user. */
 function handleAuthFailure(res) {
@@ -225,7 +249,7 @@ function setComposerBusy(busy) {
 async function sendChatMessage(text) {
   const res = await fetch(API.CHAT_URL, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: chatHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ messages: text }),
   });
 

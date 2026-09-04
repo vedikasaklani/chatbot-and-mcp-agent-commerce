@@ -1,10 +1,10 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Header
 import database.database_models as database_models
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from database.models import OrderCreate, OrderOut, ChatInput, User, Product
 from typing import Optional
-from agent.agent import run_agent, build_decision_record
+from agent.agent import run_agent, build_decision_record, clear_conversation
 from api.reviews import reviews_router
 from database.database import session, get_db
 from api.dependencies import oauth_scheme1
@@ -39,11 +39,12 @@ app.add_middleware(
 @app.post("/chat")
 def chat(
     payload: ChatInput,
+    x_chat_session_id: str = Header(..., min_length=1, max_length=128),
     auth_token: str = Depends(oauth2_scheme),
     user: database_models.User = Depends(get_current_user),
     db:Session=Depends(get_db)
 ):
-    result=run_agent(payload.messages, token=auth_token)
+    result=run_agent(payload.messages, session_id=x_chat_session_id)
     order_id = next(
         (e["result"]["id"] for e in result["trace"]
          if e["tool"] == "create_order" and isinstance(e["result"], dict) and "id" in e["result"]),
@@ -58,6 +59,15 @@ def chat(
             db.commit()
 
     return result
+
+
+@app.delete("/chat/session", status_code=204)
+def clear_chat_session(
+    x_chat_session_id: str = Header(..., min_length=1, max_length=128),
+    _: database_models.User = Depends(get_current_user),
+):
+    """Clear transient agent context when the browser session ends."""
+    clear_conversation(x_chat_session_id)
 
 
 

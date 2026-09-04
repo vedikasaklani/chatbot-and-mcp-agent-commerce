@@ -3,6 +3,7 @@ Agent loop using Groq's OpenAI-compatible client for tool calling.
 """
 import os
 import json
+import time
 from dotenv import load_dotenv
 from openai import OpenAI
 from agent.prompts import SYSTEM_PROMPT
@@ -18,13 +19,36 @@ client = OpenAI(
 
 MODEL = "qwen/qwen3.8-27b"
 
-conversation_history: dict[str, list[dict]] = {}
+SESSION_HISTORY_TTL_SECONDS = 60 * 60 * 2
+
+# This is deliberately keyed by a browser-session id rather than an account or
+# JWT. A user opening a new browser session must start a new conversation.
+conversation_history: dict[str, tuple[list[dict], float]] = {}
 
 
-def run_agent(user_message: str, token: str, max_turns: int = 9) -> dict:
-    if token not in conversation_history:
-        conversation_history[token] = [{"role": "system", "content": SYSTEM_PROMPT}]
-    messages = list(conversation_history[token])
+def _discard_expired_histories() -> None:
+    """Remove histories left behind when a browser closes unexpectedly."""
+    cutoff = time.monotonic() - SESSION_HISTORY_TTL_SECONDS
+    expired_ids = [
+        session_id
+        for session_id, (_, last_used) in conversation_history.items()
+        if last_used < cutoff
+    ]
+    for session_id in expired_ids:
+        del conversation_history[session_id]
+
+
+def clear_conversation(session_id: str) -> None:
+    """Forget the in-memory history for one browser session."""
+    conversation_history.pop(session_id, None)
+
+
+def run_agent(user_message: str, session_id: str, max_turns: int = 9) -> dict:
+    _discard_expired_histories()
+    history, _ = conversation_history.get(
+        session_id, ([{"role": "system", "content": SYSTEM_PROMPT}], time.monotonic())
+    )
+    messages = list(history)
     messages.append({"role": "user", "content": user_message})
 
     trace = []
@@ -42,7 +66,7 @@ def run_agent(user_message: str, token: str, max_turns: int = 9) -> dict:
 
             if not message.tool_calls:
                 messages.append({"role": "assistant", "content": message.content})
-                conversation_history[token] = messages  
+                conversation_history[session_id] = (messages, time.monotonic())
                 return {
                     "final_response": message.content,
                     "trace": trace,
@@ -81,7 +105,7 @@ def run_agent(user_message: str, token: str, max_turns: int = 9) -> dict:
                     "content": json.dumps(result),
                 })
 
-        conversation_history[token] = messages  # commit even on max-turns cutoff
+        conversation_history[session_id] = (messages, time.monotonic())  # commit even on max-turns cutoff
         return {
             "final_response": "I wasn't able to complete this within the allowed steps.",
             "trace": trace,
