@@ -9,7 +9,7 @@ import database.database_models as db_mdl
 from fastapi import Depends, HTTPException, Request
 from database.models import OrderOut, PaymentInitiate
 from database.database_models import CartItem, Product, User
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, contains_eager
 from database.database import get_db
 from fastapi import APIRouter
 from security import get_current_user
@@ -43,12 +43,11 @@ def amount_to_paise(amount: Decimal | float) -> int:
 def create_order(db: Session, user: User, cart: db_mdl.Cart, initiated_by: Literal["user", "agent"]):
     query = (
         db.query(db_mdl.CartItem)
-        .options(joinedload(db_mdl.CartItem.product))
         .join(db_mdl.CartItem.product)
+        .options(contains_eager(db_mdl.CartItem.product))
         .filter(db_mdl.CartItem.cart_id == cart.id)
         .with_for_update(of=db_mdl.Product)
     )
-
     cart_items = query.all()
 
     if not cart_items:
