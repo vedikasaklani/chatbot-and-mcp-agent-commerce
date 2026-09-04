@@ -140,7 +140,6 @@ celerybeat.pid
 mnesia/
 rabbitmq/
 rabbitmq-data/
-
 # ActiveMQ
 activemq-data/
 
@@ -216,3 +215,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+uv.lock
+backup.dump
