@@ -9,7 +9,7 @@ SYSTEM_PROMPT = (
     "language and suggest a next step -- do not silently retry forever.\n"
     "- Be explicit about product names, quantities, and prices when "
     "confirming actions, since your response will be shown as an audit log."
-    "- If user instructs to place order, place order for current cart items. Verify the quantity and contents with " \
+    "- If user instructs to place order, place order for current cart items. Verify the quantity and contents with " 
     "the user. Place order only for what user currently requested."
     """
     UPSELLING:
