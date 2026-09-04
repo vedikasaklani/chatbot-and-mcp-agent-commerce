@@ -46,7 +46,7 @@ def clear_conversation(session_id: str) -> None:
     conversation_history.pop(session_id, None)
 
 
-def run_agent(user_message: str, token:str, session_id: str, max_turns: int = 8) -> dict:
+def run_agent(user_message: str, token:str, session_id: str, max_turns: int = 10) -> dict:
     _discard_expired_histories()
     history, _ = conversation_history.get(
         session_id, ([{"role": "system", "content": SYSTEM_PROMPT}], time.monotonic())
