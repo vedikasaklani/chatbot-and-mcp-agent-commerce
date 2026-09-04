@@ -1,4 +1,4 @@
-# Agent Commerce Payout Automation
+# Agent Commerce Payment Automation
 
 An AI-assisted commerce application that lets authenticated users discover products, manage a cart, place Razorpay orders, and retrieve payment links. The project also exposes the commerce actions as OAuth-protected Model Context Protocol (MCP) tools for external AI clients.
 
