@@ -13,7 +13,7 @@ mcp = FastMCP(
     "ecommerce-agent",
     auth=AuthKitProvider(
         authkit_domain="https://polished-silence-88-staging.authkit.app",
-        base_url="https://external-mcp-server.onrender.com",  # must match what WorkOS has configured
+        base_url="https://external-mcp-server.onrender.com",  #match what WorkOS has configured
     ),
 )
 
@@ -60,7 +60,7 @@ def search_products(q: str = None, category: str = None, min_price: float = None
     r = requests.get(f"{BASE_URL}/products", params=params, headers=_headers(), timeout=_timeout())
     if r.status_code >= 400:
         return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return r.json()
+    return {"products" : r.json()}
 
 
 @mcp.tool()
@@ -69,7 +69,7 @@ def get_product(product_id: int) -> dict:
     r = requests.get(f"{BASE_URL}/products/{product_id}", headers=_headers(), timeout=_timeout())
     if r.status_code >= 400:
         return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return r.json()
+    return {"product" : r.json()}
 
 
 @mcp.tool()
@@ -79,7 +79,7 @@ def add_to_cart(product_id: int, quantity: int) -> dict:
     r = requests.post(f"{BASE_URL}/cart/{product_id}/{quantity}", headers=_headers(), timeout=_timeout())
     if r.status_code >= 400:
         return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return r.json()
+    return {"add-to-cart": r.json()}
 
 
 @mcp.tool()
@@ -88,7 +88,7 @@ def remove_from_cart(product_id: int, quantity: int) -> dict:
     r = requests.post(f"{BASE_URL}/cart/{product_id}/{quantity}/delete", headers=_headers(), timeout=_timeout())
     if r.status_code >= 400:
         return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return r.json()
+    return {"remove from cart" : r.json()}
 
 
 @mcp.tool()
@@ -97,7 +97,7 @@ def view_cart() -> dict:
     r = requests.get(f"{BASE_URL}/cart", headers=_headers(), timeout=_timeout())
     if r.status_code >= 400:
         return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return r.json()
+    return {"cart": r.json()}
 
 
 @mcp.tool()
@@ -107,7 +107,7 @@ def create_order() -> dict:
     r = requests.post(f"{BASE_URL}/razorpay/agent/orders", headers=_headers(), timeout=_timeout())
     if r.status_code >= 400:
         return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return r.json()
+    return {"order": r.json()}
 
 
 @mcp.tool()
@@ -118,7 +118,7 @@ def get_payment_link(order_id: int) -> dict:
                        headers=_headers(), timeout=_timeout())
     if r.status_code >= 400:
         return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return r.json()
+    return {"payment-link": r.json()}
 
 
 @mcp.tool()
@@ -127,7 +127,7 @@ def check_order_status(order_id: int) -> dict:
     r = requests.get(f"{BASE_URL}/razorpay/agent/orders/{order_id}", headers=_headers(), timeout=_timeout())
     if r.status_code >= 400:
         return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return r.json()
+    return {"order-status": r.json()}
 
 
 @mcp.tool()
@@ -136,7 +136,7 @@ def get_ratings(product_id: int) -> dict:
     r = requests.get(f"{BASE_URL}/reviews/products/{product_id}", headers=_headers(), timeout=_timeout())
     if r.status_code >= 400:
         return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return r.json()
+    return {"ratings": r.json()}
 
 #Workaround for pydantic httpurl automatically adding a slash at end: causes a mismatch error
 import json
