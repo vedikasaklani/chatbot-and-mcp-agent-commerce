@@ -3,11 +3,11 @@ from fastmcp import FastMCP
 from fastmcp.server.auth.providers.workos import AuthKitProvider
 from fastmcp.server.dependencies import get_access_token
 from fastapi import HTTPException
-import requests
 
 from security import create_access_token       
 from database.database import get_db
 from database.database_models import User
+from commerce_client import commerce_client
 
 mcp = FastMCP(
     "ecommerce-agent",
@@ -16,8 +16,6 @@ mcp = FastMCP(
         base_url="https://external-mcp-server.onrender.com",  #match what WorkOS has configured
     ),
 )
-
-BASE_URL = os.environ.get("BASE_URL", "https://backend-fastapi-bktw.onrender.com")
 
 
 def _headers() -> dict:
@@ -38,112 +36,72 @@ def _headers() -> dict:
         next(db_gen, None)  
 
 
-#im making the connection timeout so the agent doesnt stay stuck in loops.
-CONNECT_TIMEOUT_SECONDS = 3.05
-READ_TIMEOUT_SECONDS = 15
-
-def _timeout():
-    return (CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS)
-
-
-def _response_detail(response: requests.Response) -> object:
-    try:
-        return response.json()
-    except ValueError:
-        return response.text or "Backend returned an empty response"
+def _envelope(key: str, result):
+    """Wrap a successful commerce_client result under `key`; pass errors through unchanged."""
+    if isinstance(result, dict) and result.get("error"):
+        return result
+    return {key: result}
 
 
 @mcp.tool()
 def search_products(q: str = None, category: str = None, min_price: float = None,
                      max_price: float = None, in_stock: bool = None) -> dict:
     """Search and filter the product catalog by name, category, price range, or stock status."""
-    params = {}
-    if q: params["q"] = q
-    if category: params["category"] = category
-    if min_price is not None: params["min_price"] = min_price
-    if max_price is not None: params["max_price"] = max_price
-    if in_stock is not None: params["in_stock"] = "true" if in_stock else "false"
-
-    r = requests.get(f"{BASE_URL}/products", params=params, headers=_headers(), timeout=_timeout())
-    if r.status_code >= 400:
-        return {"error": True, "status_code": r.status_code, "detail": _response_detail(r)}
-    return {"products" : r.json()}
+    result = commerce_client.search_products(
+        _headers(), q=q, category=category, min_price=min_price, max_price=max_price, in_stock=in_stock
+    )
+    return _envelope("products", result)
 
 
 @mcp.tool()
 def get_product(product_id: int) -> dict:
     """Get full details for a single product by its id (pid), including current price and stock."""
-    r = requests.get(f"{BASE_URL}/products/{product_id}", headers=_headers(), timeout=_timeout())
-    if r.status_code >= 400:
-        return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return {"product" : r.json()}
+    return _envelope("product", commerce_client.get_product(_headers(), product_id))
 
 
 @mcp.tool()
 def add_to_cart(product_id: int, quantity: int) -> dict:
     """Add a quantity of one product to the cart. Fails if quantity exceeds current stock.
     Calling this multiple times for the same product creates separate cart line items."""
-    r = requests.post(f"{BASE_URL}/cart/{product_id}/{quantity}", headers=_headers(), timeout=_timeout())
-    if r.status_code >= 400:
-        return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return {"add-to-cart": r.json()}
+    return _envelope("add-to-cart", commerce_client.add_to_cart(_headers(), product_id, quantity))
 
 
 @mcp.tool()
 def remove_from_cart(product_id: int, quantity: int) -> dict:
     """Remove a quantity of a product from the cart, by product id (not cart item id)."""
-    r = requests.post(f"{BASE_URL}/cart/{product_id}/{quantity}/delete", headers=_headers(), timeout=_timeout())
-    if r.status_code >= 400:
-        return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return {"remove from cart" : r.json()}
+    return _envelope("remove from cart", commerce_client.remove_from_cart(_headers(), product_id, quantity))
 
 
 @mcp.tool()
 def view_cart() -> dict:
     """Get all current cart items and the current total cost."""
-    r = requests.get(f"{BASE_URL}/cart", headers=_headers(), timeout=_timeout())
-    if r.status_code >= 400:
-        return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return {"cart": r.json()}
+    return _envelope("cart", commerce_client.view_cart(_headers()))
 
 
 @mcp.tool()
 def create_order() -> dict:
     """Place an order using all items currently in the cart. Backend enforces a ₹10,000 cap
     for agent-initiated orders -- if this returns a 400, tell the user their order exceeds it."""
-    r = requests.post(f"{BASE_URL}/razorpay/agent/orders", headers=_headers(), timeout=_timeout())
-    if r.status_code >= 400:
-        return {"error": True, "status_code": r.status_code, "detail": _response_detail(r)}
-    return {"order": r.json()}
+    return _envelope("order", commerce_client.create_order(_headers()))
 
 
 @mcp.tool()
 def get_payment_link(order_id: int) -> dict:
     """Get a hosted payment page link for an order awaiting payment.
     Send this URL to the user -- they complete payment there."""
-    r = requests.post(f"{BASE_URL}/razorpay/agent/orders/{order_id}/payment-link",
-                       headers=_headers(), timeout=_timeout())
-    if r.status_code >= 400:
-        return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return {"payment-link": r.json()}
+    return _envelope("payment-link", commerce_client.get_payment_link(_headers(), order_id))
 
 
 @mcp.tool()
 def check_order_status(order_id: int) -> dict:
     """Check whether an order has been paid yet."""
-    r = requests.get(f"{BASE_URL}/razorpay/agent/orders/{order_id}", headers=_headers(), timeout=_timeout())
-    if r.status_code >= 400:
-        return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return {"order-status": r.json()}
+    return _envelope("order-status", commerce_client.check_order_status(_headers(), order_id))
 
 
 @mcp.tool()
 def get_ratings(product_id: int) -> dict:
     """Get customer reviews and average rating for a product by ID."""
-    r = requests.get(f"{BASE_URL}/reviews/products/{product_id}", headers=_headers(), timeout=_timeout())
-    if r.status_code >= 400:
-        return {"error": True, "status_code": r.status_code, "detail": r.json().get("detail")}
-    return {"ratings": r.json()}
+    return _envelope("ratings", commerce_client.get_ratings(_headers(), product_id))
 
 #Workaround for pydantic httpurl automatically adding a slash at end: causes a mismatch error
 import json
@@ -195,4 +153,4 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=int(os.environ.get("PORT", 9000)),
         middleware=[Middleware(StripTrailingSlashMiddleware)],
-    )  
+    )
