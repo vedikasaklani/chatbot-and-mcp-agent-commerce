@@ -113,6 +113,21 @@ class OrderItem(Base):
     product = relationship("Product")
 
 
+class ConversationSession(Base):
+    """One row per user thar works as the agent's in-progress chat context.
+    there is exactly one live conversation
+    per logged-in user. `started_at` is reset whenever the
+    conversation is considered stale. attempt to remove need of a background job.
+    """
+    __tablename__ = "conversation_sessions"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("Users.id"), primary_key=True)
+    messages = Column(JSON, nullable=False, default=list)
+    started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    user = relationship("User")
+
+
 class Review(Base):
     __tablename__ = "reviews"
     id = Column(Integer, primary_key=True)

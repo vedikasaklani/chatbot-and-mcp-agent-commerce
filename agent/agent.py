@@ -3,55 +3,79 @@ Agent loop using Groq's OpenAI-compatible client for tool calling.
 """
 import os
 import json
-import time
-import logging
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from openai import OpenAI
+from sqlalchemy.orm import Session
 from agent.prompts import SYSTEM_PROMPT
 from agent.agent_tools import TOOLS, execute_tool
-
-logger = logging.getLogger(__name__)
+from database.database_models import ConversationSession
 
 load_dotenv()
 
 client = OpenAI(
-    base_url="https://router.huggingface.co/v1",
-    api_key=os.environ["HF_TOKEN"],
+    base_url="https://api.groq.com/openai/v1",
+    api_key=os.environ["GROQ_API_KEY"],
     timeout=30.0,
 )
 
-MODEL = "Qwen/Qwen3.8-27B:ovhcloud"
+MODEL = "qwen/qwen3.8-27b"
 
-SESSION_HISTORY_TTL_SECONDS = 60 * 60 * 2
-
-# This is deliberately keyed by a browser-session id rather than an account or
-# JWT. A user opening a new browser session must start a new conversation.
-conversation_history: dict[str, tuple[list[dict], float]] = {}
-
-
-def _discard_expired_histories() -> None:
-    """Remove histories left behind when a browser closes unexpectedly."""
-    cutoff = time.monotonic() - SESSION_HISTORY_TTL_SECONDS
-    expired_ids = [
-        session_id
-        for session_id, (_, last_used) in conversation_history.items()
-        if last_used < cutoff
-    ]
-    for session_id in expired_ids:
-        del conversation_history[session_id]
+# How long a conversation is kept before it's treated as stale and reset.
+# This exists purely to protect the model's context window -- not as an
+# access-control mechanism -- so it lives as a plain timestamp on the row,
+# not as a token with its own expiry.
+SESSION_IDLE_TIMEOUT = timedelta(hours=1)
 
 
-def clear_conversation(session_id: str) -> None:
-    """Forget the in-memory history for one browser session."""
-    conversation_history.pop(session_id, None)
+def _load_or_reset_session(db: Session, user_id) -> ConversationSession:
+    """Lock this user's conversation row for the duration of the request,
+    creating it on first use or resetting it if it's gone stale.
 
+    The row lock (SELECT ... FOR UPDATE) is what prevents two concurrent
+    requests for the same user (double-click, retry, two tabs) from doing a
+    read-modify-write race and silently dropping one of the turns: the
+    second request blocks here until the first has committed, then it reads
+    the now-current state instead of a stale copy.
 
-def run_agent(user_message: str, token:str, session_id: str, max_turns: int = 10) -> dict:
-    _discard_expired_histories()
-    history, _ = conversation_history.get(
-        session_id, ([{"role": "system", "content": SYSTEM_PROMPT}], time.monotonic())
+    Caller is responsible for committing (or rolling back) the transaction
+    this lock lives in.
+    """
+    session_row = (
+        db.query(ConversationSession)
+        .filter(ConversationSession.user_id == user_id)
+        .with_for_update()
+        .first()
     )
-    messages = list(history)
+
+    now = datetime.now()
+
+    if session_row is None:
+        session_row = ConversationSession(
+            user_id=user_id,
+            messages=[{"role": "system", "content": SYSTEM_PROMPT}],
+            started_at=now,
+        )
+        db.add(session_row)
+        db.flush()
+    elif now - session_row.started_at > SESSION_IDLE_TIMEOUT:
+        session_row.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        session_row.started_at = now
+
+    return session_row
+
+
+def run_agent(db: Session, user_id, user_message: str, token: str, max_turns: int = 9) -> dict:
+    """Run one turn of the agent loop for `user_id`.
+
+    `user_id` identifies whose conversation this is (used only to key the
+    stored context). `token` is unrelated to that -- it's the bearer auth
+    forwarded to `execute_tool` so tool calls can hit the backend API as
+    this user. Keeping these separate means the JWT is never overloaded as
+    a conversation key again.
+    """
+    session_row = _load_or_reset_session(db, user_id)
+    messages = list(session_row.messages)
     messages.append({"role": "user", "content": user_message})
 
     trace = []
@@ -69,7 +93,8 @@ def run_agent(user_message: str, token:str, session_id: str, max_turns: int = 10
 
             if not message.tool_calls:
                 messages.append({"role": "assistant", "content": message.content})
-                conversation_history[session_id] = (messages, time.monotonic())
+                session_row.messages = messages
+                db.commit()
                 return {
                     "final_response": message.content,
                     "trace": trace,
@@ -107,8 +132,8 @@ def run_agent(user_message: str, token:str, session_id: str, max_turns: int = 10
                     "content": json.dumps(result),
                 })
 
-            conversation_history[session_id] = (messages, time.monotonic())
-
+        session_row.messages = messages  # commit even on max-turns cutoff
+        db.commit()
         return {
             "final_response": "I wasn't able to complete this within the allowed steps.",
             "trace": trace,
@@ -116,17 +141,8 @@ def run_agent(user_message: str, token:str, session_id: str, max_turns: int = 10
             "hit_max_turns": True,
         }
 
-    except Exception as exc:
-        response = getattr(exc, "response", None)
-        headers = getattr(response, "headers", {}) or {}
-        rate_limit_headers = {
-            name: headers.get(name)
-        }
-        logger.exception(
-            getattr(exc, "status_code", getattr(response, "status_code", None)),
-            getattr(exc, "body", None),
-            rate_limit_headers,
-        )
+    except Exception:
+        db.rollback()
         return {
             "final_response": "Something went wrong on my end — please try that again.",
             "trace": trace,

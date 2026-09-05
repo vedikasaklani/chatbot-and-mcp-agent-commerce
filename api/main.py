@@ -1,5 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Header
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException
 import database.database_models as database_models
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -41,12 +40,11 @@ app.add_middleware(
 @app.post("/chat")
 def chat(
     payload: ChatInput,
-    x_chat_session_id: str = Header(..., min_length=1, max_length=128),
     auth_token: str = Depends(oauth2_scheme),
     user: database_models.User = Depends(get_current_user),
     db:Session=Depends(get_db)
 ):
-    result=run_agent(payload.messages, token=auth_token, session_id=x_chat_session_id)
+    result = run_agent(db, user.id, payload.messages, token=auth_token)
     order_id = next(
         (e["result"]["id"] for e in result["trace"]
          if e["tool"] == "create_order" and isinstance(e["result"], dict) and "id" in e["result"]),

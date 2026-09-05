@@ -6,7 +6,6 @@ const API = {
   REGISTER_URL: `${API_BASE}/auth/register`,
 
   CHAT_URL: `${API_BASE}/chat`,
-  CHAT_SESSION_URL: `${API_BASE}/chat/session`,
   PRODUCTS_URL: `${API_BASE}/products`,
   PRODUCTS_BY_ID_URL: (id) => `${API_BASE}/products/${id}`,
 
@@ -19,29 +18,10 @@ const API = {
   VERIFY_PAYMENT_URL: (orderId) => `${API_BASE}/razorpay/agent/orders/${orderId}/verify`,
 };
 
-const CHAT_SESSION_STORAGE_KEY = "chatSessionId";
-
-function createChatSessionId() {
-  if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function getChatSessionId() {
-  const existingId = sessionStorage.getItem(CHAT_SESSION_STORAGE_KEY);
-  if (existingId) return existingId;
-
-  const sessionId = createChatSessionId();
-  sessionStorage.setItem(CHAT_SESSION_STORAGE_KEY, sessionId);
-  return sessionId;
-}
-
 const state = {
   authToken: sessionStorage.getItem("authToken") || null,
-  chatSessionId: getChatSessionId(),
   cart: { items: [], total: 0 }, 
 };
-
-sessionStorage.setItem("chatSessionId", state.chatSessionId);
 
 const loginScreen = document.getElementById("login-screen");
 const appScreen = document.getElementById("app-screen");
@@ -80,7 +60,6 @@ async function boot() {
       // API call failed, token might be invalid
     }
     
-    // If we got here, token is invalid - clear it and show login
     state.authToken = null;
     sessionStorage.removeItem("authToken");
   }
@@ -192,11 +171,8 @@ async function login(username, password) {
 }
 
 logoutBtn.addEventListener("click", () => {
-  clearChatSession();
   state.authToken = null;
   sessionStorage.removeItem("authToken");
-  state.chatSessionId = createChatSessionId();
-  sessionStorage.setItem(CHAT_SESSION_STORAGE_KEY, state.chatSessionId);
   messagesEl.innerHTML = "";
   showLogin();
 });
@@ -205,24 +181,6 @@ function authHeaders(extra = {}) {
   extra["ngrok-skip-browser-warning"] = "true";
   return { Authorization: `Bearer ${state.authToken}`, ...extra };
 }
-
-function chatHeaders(extra = {}) {
-  return authHeaders({ "X-Chat-Session-Id": state.chatSessionId, ...extra });
-}
-
-function clearChatSession() {
-  if (!state.authToken || !state.chatSessionId) return;
-
-  // keepalive lets this request complete during page shutdown. The server also
-  // expires orphaned sessions in case a browser terminates it early.
-  fetch(API.CHAT_SESSION_URL, {
-    method: "DELETE",
-    headers: chatHeaders(),
-    keepalive: true,
-  }).catch(() => {});
-}
-
-window.addEventListener("pagehide", clearChatSession);
 
 /** Redirects to login on a 401 so an expired token doesn't strand the user. */
 function handleAuthFailure(res) {
@@ -269,9 +227,8 @@ async function sendChatMessage(text) {
     method: "POST",
     headers: authHeaders({
       "Content-Type": "application/json",
-      "X-Chat-Session-Id": state.chatSessionId,
     }),
-   body: JSON.stringify({ messages: text }),
+    body: JSON.stringify({ messages: text }),
   });
 
   if (handleAuthFailure(res)) throw new Error("Session expired — please sign in again.");
@@ -651,7 +608,6 @@ async function refreshCart() {
 }
 
 function applyCartUpdate(cart) {
-  // Backend cart schema: { user, cart, total_amt, cart_items: [{id, product_id, name, price, quantity, subtotal}] }
   const cartItems = Array.isArray(cart.cart_items) ? cart.cart_items : [];
   state.cart = {
     items: cartItems,
@@ -705,7 +661,6 @@ function renderCartItem(item) {
 }
 
 async function removeCartItem(item) {
-  // Backend route: POST /cart/{product_id}/{quantity}/delete - removes specified quantity of item
   try {
     const res = await fetch(API.REMOVE_FROM_CART_URL(item.product_id, item.quantity), {
       method: "POST",
