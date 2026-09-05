@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header
 import database.database_models as database_models
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -41,10 +42,12 @@ app.add_middleware(
 def chat(
     payload: ChatInput,
     x_chat_session_id: str = Header(..., min_length=1, max_length=128),
+    x_chat_session_id: str = Header(..., min_length=1, max_length=128),
     auth_token: str = Depends(oauth2_scheme),
     user: database_models.User = Depends(get_current_user),
     db:Session=Depends(get_db)
 ):
+    result=run_agent(payload.messages, token=auth_token, session_id=x_chat_session_id)
     result=run_agent(payload.messages, token=auth_token, session_id=x_chat_session_id)
     order_id = next(
         (e["result"]["id"] for e in result["trace"]
@@ -53,6 +56,7 @@ def chat(
     )
 
     if order_id:
+        record = build_decision_record(result["trace"], payload.messages, result["final_response"], order_id)
         record = build_decision_record(result["trace"], payload.messages, result["final_response"], order_id)
         order = db.query(database_models.Order).filter(database_models.Order.id == order_id).first()
         if order:

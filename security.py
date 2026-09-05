@@ -7,10 +7,12 @@ from database.database import get_db
 from sqlalchemy.orm import Session
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+from dotenv import load_dotenv
+load_dotenv
+import os
 
-SECRET_KEY = "razorpayapptoken"
 ALGORITHM = "HS256"
-
+SECRET_KEY=os.environ["SECRET_KEY"]
 
 def create_access_token(user_id):
     expire = datetime.now(timezone.utc) + timedelta(days=7)

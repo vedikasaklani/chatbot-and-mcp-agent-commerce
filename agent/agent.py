@@ -3,28 +3,55 @@ Agent loop using Groq's OpenAI-compatible client for tool calling.
 """
 import os
 import json
+import time
+import logging
 from dotenv import load_dotenv
 from openai import OpenAI
 from agent.prompts import SYSTEM_PROMPT
 from agent.agent_tools import TOOLS, execute_tool
 
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
 client = OpenAI(
-    base_url="https://api.groq.com/openai/v1",
-    api_key=os.environ["GROQ_API_KEY"],
+    base_url="https://router.huggingface.co/v1",
+    api_key=os.environ["HF_TOKEN"],
     timeout=30.0,
 )
 
-MODEL = "qwen/qwen3.8-27b"
+MODEL = "Qwen/Qwen3.8-27B:ovhcloud"
 
-conversation_history: dict[str, list[dict]] = {}
+SESSION_HISTORY_TTL_SECONDS = 60 * 60 * 2
+
+# This is deliberately keyed by a browser-session id rather than an account or
+# JWT. A user opening a new browser session must start a new conversation.
+conversation_history: dict[str, tuple[list[dict], float]] = {}
 
 
-def run_agent(user_message: str, token: str, max_turns: int = 9) -> dict:
-    if token not in conversation_history:
-        conversation_history[token] = [{"role": "system", "content": SYSTEM_PROMPT}]
-    messages = list(conversation_history[token])
+def _discard_expired_histories() -> None:
+    """Remove histories left behind when a browser closes unexpectedly."""
+    cutoff = time.monotonic() - SESSION_HISTORY_TTL_SECONDS
+    expired_ids = [
+        session_id
+        for session_id, (_, last_used) in conversation_history.items()
+        if last_used < cutoff
+    ]
+    for session_id in expired_ids:
+        del conversation_history[session_id]
+
+
+def clear_conversation(session_id: str) -> None:
+    """Forget the in-memory history for one browser session."""
+    conversation_history.pop(session_id, None)
+
+
+def run_agent(user_message: str, token:str, session_id: str, max_turns: int = 10) -> dict:
+    _discard_expired_histories()
+    history, _ = conversation_history.get(
+        session_id, ([{"role": "system", "content": SYSTEM_PROMPT}], time.monotonic())
+    )
+    messages = list(history)
     messages.append({"role": "user", "content": user_message})
 
     trace = []
@@ -42,14 +69,13 @@ def run_agent(user_message: str, token: str, max_turns: int = 9) -> dict:
 
             if not message.tool_calls:
                 messages.append({"role": "assistant", "content": message.content})
-                conversation_history[token] = messages  
+                conversation_history[session_id] = (messages, time.monotonic())
                 return {
                     "final_response": message.content,
                     "trace": trace,
                     "turns_used": turn + 1,
                 }
 
-            # Assistant's tool-call message MUST go in before the tool results
             messages.append({
                 "role": "assistant",
                 "content": message.content,
@@ -81,7 +107,8 @@ def run_agent(user_message: str, token: str, max_turns: int = 9) -> dict:
                     "content": json.dumps(result),
                 })
 
-        conversation_history[token] = messages  # commit even on max-turns cutoff
+            conversation_history[session_id] = (messages, time.monotonic())
+
         return {
             "final_response": "I wasn't able to complete this within the allowed steps.",
             "trace": trace,
@@ -89,8 +116,18 @@ def run_agent(user_message: str, token: str, max_turns: int = 9) -> dict:
             "hit_max_turns": True,
         }
 
-    except Exception:
-            return {
+    except Exception as exc:
+        response = getattr(exc, "response", None)
+        headers = getattr(response, "headers", {}) or {}
+        rate_limit_headers = {
+            name: headers.get(name)
+        }
+        logger.exception(
+            getattr(exc, "status_code", getattr(response, "status_code", None)),
+            getattr(exc, "body", None),
+            rate_limit_headers,
+        )
+        return {
             "final_response": "Something went wrong on my end — please try that again.",
             "trace": trace,
             "error": True,

@@ -6,6 +6,7 @@ const API = {
   REGISTER_URL: `${API_BASE}/auth/register`,
 
   CHAT_URL: `${API_BASE}/chat`,
+  CHAT_SESSION_URL: `${API_BASE}/chat/session`,
   PRODUCTS_URL: `${API_BASE}/products`,
   PRODUCTS_BY_ID_URL: (id) => `${API_BASE}/products/${id}`,
 
@@ -39,6 +40,8 @@ const state = {
   chatSessionId: getChatSessionId(),
   cart: { items: [], total: 0 }, 
 };
+
+sessionStorage.setItem("chatSessionId", state.chatSessionId);
 
 const loginScreen = document.getElementById("login-screen");
 const appScreen = document.getElementById("app-screen");
@@ -189,6 +192,7 @@ async function login(username, password) {
 }
 
 logoutBtn.addEventListener("click", () => {
+  clearChatSession();
   state.authToken = null;
   sessionStorage.removeItem("authToken");
   state.chatSessionId = createChatSessionId();
@@ -201,6 +205,24 @@ function authHeaders(extra = {}) {
   extra["ngrok-skip-browser-warning"] = "true";
   return { Authorization: `Bearer ${state.authToken}`, ...extra };
 }
+
+function chatHeaders(extra = {}) {
+  return authHeaders({ "X-Chat-Session-Id": state.chatSessionId, ...extra });
+}
+
+function clearChatSession() {
+  if (!state.authToken || !state.chatSessionId) return;
+
+  // keepalive lets this request complete during page shutdown. The server also
+  // expires orphaned sessions in case a browser terminates it early.
+  fetch(API.CHAT_SESSION_URL, {
+    method: "DELETE",
+    headers: chatHeaders(),
+    keepalive: true,
+  }).catch(() => {});
+}
+
+window.addEventListener("pagehide", clearChatSession);
 
 /** Redirects to login on a 401 so an expired token doesn't strand the user. */
 function handleAuthFailure(res) {
@@ -249,7 +271,7 @@ async function sendChatMessage(text) {
       "Content-Type": "application/json",
       "X-Chat-Session-Id": state.chatSessionId,
     }),
-    body: JSON.stringify({ messages: text }),
+   body: JSON.stringify({ messages: text }),
   });
 
   if (handleAuthFailure(res)) throw new Error("Session expired — please sign in again.");
