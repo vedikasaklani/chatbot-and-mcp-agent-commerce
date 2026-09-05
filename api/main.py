@@ -1,10 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Header
 import database.database_models as database_models
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 from database.models import OrderCreate, OrderOut, ChatInput, User, Product
 from typing import Optional
-from agent.agent import run_agent, build_decision_record
+from agent.agent import run_agent, build_decision_record, clear_conversation
+from api import cart_service
 from api.reviews import reviews_router
 from database.database import session, get_db
 from api.dependencies import oauth_scheme1
@@ -39,11 +40,12 @@ app.add_middleware(
 @app.post("/chat")
 def chat(
     payload: ChatInput,
+    x_chat_session_id: str = Header(..., min_length=1, max_length=128),
     auth_token: str = Depends(oauth2_scheme),
     user: database_models.User = Depends(get_current_user),
     db:Session=Depends(get_db)
 ):
-    result=run_agent(payload.messages, token=auth_token)
+    result=run_agent(payload.messages, token=auth_token, session_id=x_chat_session_id)
     order_id = next(
         (e["result"]["id"] for e in result["trace"]
          if e["tool"] == "create_order" and isinstance(e["result"], dict) and "id" in e["result"]),
@@ -51,13 +53,22 @@ def chat(
     )
 
     if order_id:
-        record = build_decision_record(result["trace"], payload.message, result["final_response"], order_id)
+        record = build_decision_record(result["trace"], payload.messages, result["final_response"], order_id)
         order = db.query(database_models.Order).filter(database_models.Order.id == order_id).first()
         if order:
             order.decision_record = record
             db.commit()
 
     return result
+
+
+@app.delete("/chat/session", status_code=204)
+def clear_chat_session(
+    x_chat_session_id: str = Header(..., min_length=1, max_length=128),
+    _: database_models.User = Depends(get_current_user),
+):
+    """Clear transient agent context when the browser session ends."""
+    clear_conversation(x_chat_session_id)
 
 
 
@@ -100,44 +111,8 @@ def get_cart(
     db: Session = Depends(get_db),
     user: database_models.User = Depends(get_current_user),
 ):
-    cart = (
-        db.query(database_models.Cart)
-        .filter(database_models.Cart.user_id == user.id)
-        .first()
-    )
-
-    if cart is None:
-        return {"user": user.id, "cart": None, "total_amt": 0, "cart_items": []}
-
-    cart_items = (
-        db.query(database_models.CartItem)
-        .options(joinedload(database_models.CartItem.product))
-        .filter(database_models.CartItem.cart_id == cart.id)
-        .all()
-    )
-
-    total_amt = sum(
-        item.quantity * item.product.price
-        for item in cart_items
-        if item.product is not None
-    )
-
-    return {
-        "user": user.id,
-        "cart": cart.id,
-        "total_amt": total_amt,
-        "cart_items": [
-            {
-                "id": item.id,
-                "product_id": item.product_id,
-                "name": item.product.pname if item.product else None,
-                "price": item.product.price if item.product else None,
-                "quantity": item.quantity,
-                "subtotal": item.quantity * item.product.price if item.product else 0,
-            }
-            for item in cart_items
-        ],
-    }
+    cart = cart_service.find_cart(db, user)
+    return cart_service.serialize_cart(db, cart, user.id)
 
 
 @app.post("/cart/{id}/{qty}")
@@ -150,46 +125,8 @@ def add_cart(
     if qty <= 0:
         raise HTTPException(status_code=400, detail="Quantity must be positive.")
 
-    cart = (
-        db.query(database_models.Cart)
-        .filter(database_models.Cart.user_id == user.id)
-        .first()
-    )
-    if cart is None:
-        cart = database_models.Cart(user_id=user.id)
-        db.add(cart)
-        db.commit()
-        db.refresh(cart)
-
-    product = db.query(database_models.Product).filter(database_models.Product.pid == id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found.")
-
-    existing_item = (
-        db.query(database_models.CartItem)
-        .filter(
-            database_models.CartItem.cart_id == cart.id,
-            database_models.CartItem.product_id == id,
-        )
-        .first()
-    )
-    current_qty_in_cart = existing_item.quantity if existing_item else 0
-    total_requested = current_qty_in_cart + qty
-
-    if product.stock < total_requested:
-        raise HTTPException(status_code=400, detail="Insufficient stock")
-
-    if existing_item:
-        existing_item.quantity = total_requested
-        db.commit()
-        db.refresh(existing_item)
-        return existing_item
-
-    cart_item = database_models.CartItem(product_id=id, quantity=qty, cart_id=cart.id)
-    db.add(cart_item)
-    db.commit()
-    db.refresh(cart_item)
-    return cart_item
+    cart = cart_service.get_or_create_cart(db, user)
+    return cart_service.add_item(db, cart, id, qty)
 
 
 @app.post("/cart/{id}/{qty}/delete")
@@ -202,38 +139,12 @@ def delete_from_cart(
     if qty <= 0:
         raise HTTPException(status_code=400, detail="Quantity to remove must be positive.")
 
-    cart = (
-        db.query(database_models.Cart)
-        .filter(database_models.Cart.user_id == user.id)
-        .first()
-    )
+    cart = cart_service.find_cart(db, user)
     if cart is None:
         raise HTTPException(status_code=404, detail="Cart not found.")
 
-    cart_item = (
-        db.query(database_models.CartItem)
-        .filter(
-            database_models.CartItem.cart_id == cart.id,
-            database_models.CartItem.product_id == id,
-        )
-        .first()
-    )
-    if cart_item is None or cart_item.quantity <= 0:
-        raise HTTPException(status_code=404, detail="You cannot delete a product that is not in the cart.")
-
-    if qty > cart_item.quantity:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot remove more of a product than is present in the cart.",
-        )
-
-    if qty == cart_item.quantity:
-        db.delete(cart_item)
-    else:
-        cart_item.quantity -= qty
-
-    db.commit()
-    return {"detail": "Cart updated."} 
+    cart_service.remove_item(db, cart, id, qty)
+    return {"detail": "Cart updated."}
 
 
 # Serve the frontend through an HTTP route instead of exposing its Windows
