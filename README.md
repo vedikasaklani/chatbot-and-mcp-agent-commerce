@@ -1,423 +1,882 @@
-# AI Commerce Agent : AI-powered commerce with MCP, OAuth, and Razorpay
+# AI Commerce Agent
 
-An AI-assisted commerce application that lets authenticated users discover products, manage a cart, place Razorpay orders, and retrieve payment links. The project also exposes the commerce capabilities through an OAuth-protected Model Context Protocol (MCP) server for external AI clients.
+An e-commerce system designed to be operated by both **people and AI agents**.
 
-## Project Overview
+The project combines a traditional commerce backend with an AI agent and a **Model Context Protocol (MCP)** interface. A user can browse products, manage a cart, place orders, and initiate payments through the web application or conversationally **through the agent**.
 
-The application is split into three deployed services:
+External AI clients can access the same commerce capabilities **through MCP**.
 
-- **Frontend** — static HTML/CSS/JavaScript browser client
-- **FastAPI Backend** — authentication, commerce APIs, AI agent, database access, and Razorpay integration
-- **MCP Server** — OAuth-protected MCP interface for external AI clients
+The core design principle is:
 
-PostgreSQL provides persistent application data, while WorkOS AuthKit/Connect handles the OAuth flow used by external MCP clients.
+> **The agent decides what to do. The backend decides how it is done.**
 
-## Why This Project Is Useful
+The FastAPI backend remains the source of truth for authentication, commerce logic, database operations, and payments. The AI and MCP layers sit on top of it rather than implementing separate commerce systems.
 
-- **Conversational commerce:** an AI client can search products, manage carts, place orders, and retrieve payment links through tool calls.
-- **FastAPI backend:** REST endpoints handle authentication, products, carts, orders, reviews, ratings, and Razorpay payments.
-- **WorkOS-protected MCP:** external AI clients can access the same commerce operations through OAuth-protected MCP tools.
-- **Persistent data:** SQLAlchemy and Alembic manage PostgreSQL models and schema migrations.
-- **Browser client:** the `frontend/` directory contains a lightweight client for registration, login, cart management, and checkout.
+---
 
 ## Architecture
 
 ```text
-                         External AI Client
-                                │
-                                │ OAuth
-                                ▼
-                         WorkOS AuthKit
-                                │
-                                ▼
-                    ┌────────────────────────┐
-                    │      MCP Server        │
-                    │ external/mcp_server.py │
-                    │    Render Web Service  │
-                    └────────────┬───────────┘
-                                 │ HTTPS
-                                 ▼
-                    ┌────────────────────────┐
-                    │     FastAPI Backend     │
-                    │       api/main.py       │
-                    │    Render Web Service   │
-                    └──────────┬───────┬─────┘
-                               │       │
-                               ▼       ▼
-                         PostgreSQL   Razorpay
-
-                    ┌────────────────────────┐
-                    │       Frontend         │
-                    │       frontend/        │
-                    │    Render Static Site  │
-                    └────────────┬───────────┘
-                                 │ HTTPS
-                                 ▼
-                           FastAPI Backend
+                         ┌──────────────────────┐
+                         │     Web Frontend     │
+                         │      HTML / JS       │
+                         └──────────┬───────────┘
+                                    │
+                                    │ HTTP + JWT
+                                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│                       FastAPI Backend                       │
+│                                                             │
+│  Authentication   Products   Cart   Orders   Reviews       │
+│                                                             │
+│                         /chat                               │
+│                           │                                 │
+│                           ▼                                 │
+│                     Internal Agent                          │
+│                     ┌────────────┐                          │
+│                     │    LLM     │                          │
+│                     └─────┬──────┘                          │
+│                           │                                  │
+│                      Tool calls                              │
+│                           │                                  │
+│                           ▼                                  │
+│                    Commerce Tools                            │
+└───────────────┬─────────────────────┬──────────────────────┘
+                │                     │
+                ▼                     ▼
+          PostgreSQL               Razorpay
+                ▲
+                │
+                │ HTTP
+                │
+        ┌───────┴────────┐
+        │ CommerceClient │
+        └───────▲────────┘
+                │
+        ┌───────┴────────┐
+        │   MCP Server   │
+        │ external/      │
+        │ mcp_server.py  │
+        └───────▲────────┘
+                │
+             MCP/OAuth
+                │
+        ┌───────┴────────┐
+        │ External AI    │
+        │ Client         │
+        └────────────────┘
 ```
 
-## Repository Structure
+There are two ways an AI agent can interact with the commerce system:
 
-| Component | Location | Purpose |
-| --- | --- | --- |
-| FastAPI API | `api/main.py` | Application entry point, routes, and middleware |
-| Database | `database/` | SQLAlchemy models, database connection, and Alembic migrations |
-| AI agent | `agent/` | AI/tool-calling logic |
-| MCP server | `external/mcp_server.py` | OAuth-protected MCP tools for external clients |
-| Browser client | `frontend/` | Static HTML/CSS/JavaScript frontend |
-| MCP check | `test.py` | Verifies that the MCP server exposes the expected tools |
+### Internal agent
 
-## Getting Started Locally
+The chatbot is part of the FastAPI application.
 
-### Prerequisites
+```text
+User
+ │
+ ▼
+POST /chat
+ │
+ ▼
+AI Agent
+ │
+ ▼
+LLM chooses a tool
+ │
+ ▼
+Agent Tool
+ │
+ ▼
+Commerce API
+ │
+ ▼
+PostgreSQL / Razorpay
+```
 
-- Python 3.12+
-- PostgreSQL
-- [`uv`](https://docs.astral.sh/uv/)
-- Razorpay credentials
-- WorkOS/AuthKit credentials
-- Groq credentials
+### External MCP agent
 
-### Install dependencies
+An external AI client connects through MCP.
 
-From the repository root:
+```text
+External AI Client
+ │
+ │ MCP + OAuth
+ ▼
+MCP Server
+ │
+ ▼
+CommerceClient
+ │
+ │ HTTP + JWT
+ ▼
+FastAPI Backend
+ │
+ ▼
+PostgreSQL / Razorpay
+```
+
+Both paths eventually use the **same FastAPI commerce API**.
+
+This avoids duplicating business logic between the chatbot, MCP server, and web application.
+
+---
+
+# Why this architecture?
+
+A language model should not be responsible for directly changing application state.
+
+For example, when a user says:
+
+> "Find me a laptop under ₹50,000 and add the best one to my cart."
+
+the agent can reason about what needs to happen:
+
+```text
+search_products()
+       ↓
+get_product()
+       ↓
+add_to_cart()
+```
+
+But the actual operations are performed by the backend.
+
+```text
+LLM
+ │
+ │ decides
+ ▼
+Tool
+ │
+ │ requests
+ ▼
+FastAPI
+ │
+ │ validates + executes
+ ▼
+Database
+```
+
+This separation gives the system a clear boundary:
+
+* **LLM** — reasoning and tool selection
+* **Agent tools** — translate model requests into application operations
+* **FastAPI** — authentication, validation, business logic, and side effects
+* **PostgreSQL** — persistent state
+* **Razorpay** — payment processing
+* **MCP** — standard interface for external AI clients
+
+---
+
+# Repository Structure
+
+```text
+.
+├── agent/
+│   ├── agent.py
+│   ├── agent_tools.py
+│   └── prompts.py
+│
+├── api/
+│   ├── main.py
+│   ├── auth.py
+│   ├── dependencies.py
+│   ├── cart_service.py
+│   ├── reviews.py
+│   ├── razorpay_integration.py
+│   └── razorpay_payment_webhook.py
+│
+├── database/
+│   ├── database.py
+│   ├── database_models.py
+│   ├── models.py
+│   └── alembic/
+│
+├── external/
+│   ├── mcp_server.py
+│   └── requirements.txt
+│
+├── frontend/
+│   └── HTML / CSS / JavaScript
+│
+├── tests/
+│
+├── utils/
+│
+├── commerce_client.py
+├── security.py
+├── pyproject.toml
+└── uv.lock
+```
+
+### `api/`
+
+The main application layer.
+
+It contains the FastAPI application, authentication, cart logic, reviews, orders, and Razorpay integration.
+
+This is where the application's actual commerce rules live.
+
+### `agent/`
+
+Contains the internal AI agent.
+
+* `agent.py` — agent execution and tool-calling loop
+* `agent_tools.py` — tools exposed to the LLM
+* `prompts.py` — agent instructions/prompts
+
+The agent can call commerce operations, but it does not directly access the database.
+
+### `commerce_client.py`
+
+A thin HTTP client used to communicate with the FastAPI commerce API.
+
+It creates an explicit boundary between agent-facing code and backend implementation.
+
+```text
+Agent / MCP
+     │
+     ▼
+CommerceClient
+     │
+     ▼
+FastAPI
+```
+
+### `external/`
+
+Contains the MCP server.
+
+`mcp_server.py` exposes commerce functionality as MCP tools for external AI clients.
+
+The MCP tools use `CommerceClient` instead of implementing their own database or commerce logic.
+
+### `database/`
+
+Contains SQLAlchemy database configuration/models and Alembic migrations.
+
+PostgreSQL stores both commerce state and agent-related state such as conversation sessions.
+
+### `frontend/`
+
+The browser-facing application.
+
+It communicates with the FastAPI backend over HTTP.
+
+### `security.py`
+
+Contains application-level JWT authentication and user resolution.
+
+---
+
+# Agent Architecture
+
+The internal agent is implemented as a bounded tool-calling loop.
+
+Conceptually:
+
+```text
+                     User Message
+                          │
+                          ▼
+                    ┌───────────┐
+                    │    LLM    │
+                    └─────┬─────┘
+                          │
+                 ┌────────┴────────┐
+                 │                 │
+          normal response       tool call
+                                   │
+                                   ▼
+                             execute_tool()
+                                   │
+                                   ▼
+                            Commerce API
+                                   │
+                                   ▼
+                                result
+                                   │
+                                   └──────► LLM
+                                              │
+                                              ▼
+                                       Final response
+```
+
+The agent does not blindly execute an unlimited number of calls. Its tool-calling process is bounded by a maximum number of turns.
+
+This prevents a malformed model response from creating an unbounded execution loop.
+
+---
+
+# Agent Tools
+
+The tools exposed to the internal agent correspond to commerce operations such as:
+
+```text
+search_products
+get_product
+add_to_cart
+remove_from_cart
+view_cart
+create_order
+get_payment_link
+check_order_status
+get_ratings
+```
+
+The important part is what happens after the LLM chooses one.
+
+For example:
+
+```text
+LLM
+ │
+ │ search_products(...)
+ ▼
+Agent Tool
+ │
+ ▼
+CommerceClient
+ │
+ │ HTTP
+ ▼
+GET /products
+ │
+ ▼
+FastAPI
+ │
+ ▼
+PostgreSQL
+```
+
+The agent therefore behaves like an authenticated API client rather than having privileged access to application internals.
+
+---
+
+# MCP Architecture
+
+The MCP server exposes the commerce capabilities to external AI clients.
+
+```text
+┌──────────────────┐
+│   External AI    │
+└────────┬─────────┘
+         │
+         │ MCP
+         ▼
+┌──────────────────┐
+│   MCP Server     │
+│                  │
+│ MCP tool layer   │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ CommerceClient   │
+└────────┬─────────┘
+         │
+         │ HTTP
+         ▼
+┌──────────────────┐
+│ FastAPI Backend  │
+└──────────────────┘
+```
+
+The MCP layer is therefore an **interoperability layer**, not a second backend.
+
+This makes the MCP interface relatively thin:
+
+```text
+MCP tool
+   ↓
+CommerceClient
+   ↓
+FastAPI endpoint
+```
+
+The same backend validation and authorization rules apply regardless of whether the request originated from the frontend, internal agent, or MCP client.
+
+---
+
+# Authentication
+
+The application uses JWT-based authentication for its normal API access.
+
+```text
+User Login
+    │
+    ▼
+JWT
+    │
+    ▼
+FastAPI
+    │
+    ▼
+Authenticated User
+```
+
+For external MCP access, WorkOS AuthKit is used for the OAuth flow.
+
+The important distinction is:
+
+```text
+WorkOS
+  │
+  │ authenticates external identity
+  ▼
+MCP Server
+  │
+  │ maps identity to application user
+  ▼
+Application JWT
+  │
+  ▼
+FastAPI
+```
+
+This allows external AI clients to enter the same authorization model used by the rest of the application.
+
+---
+
+# Conversation State
+
+The chatbot maintains conversation state using a `ConversationSession`.
+
+A simplified flow is:
+
+```text
+User
+ │
+ ▼
+/chat
+ │
+ ▼
+Find user's conversation session
+ │
+ ▼
+Load previous messages
+ │
+ ▼
+Run agent
+ │
+ ├── user message
+ ├── assistant messages
+ ├── tool calls
+ └── tool results
+ │
+ ▼
+Persist updated conversation
+```
+
+The session is persisted in PostgreSQL rather than existing only in the process memory of the FastAPI server.
+
+The agent also uses a bounded context window/idle timeout so that conversations do not grow indefinitely.
+
+---
+
+# Agent Decision Records
+
+When an agent creates an order, the application can associate a structured decision record with that order.
+
+The flow is:
+
+```text
+User Request
+     │
+     ▼
+Agent
+     │
+     ├── tool call
+     ├── tool call
+     └── create_order
+              │
+              ▼
+            Order
+              │
+              ▼
+       Decision Record
+```
+
+The record captures information from the agent execution, including the request, tool trace, and resulting decision.
+
+This provides a basic audit trail for agent-driven commerce actions.
+
+---
+
+# Payments
+
+Payment processing is deliberately kept outside the agent.
+
+The agent can request operations such as:
+
+```text
+create_order()
+get_payment_link()
+check_order_status()
+```
+
+but the actual payment workflow is implemented by the backend.
+
+```text
+Agent
+ │
+ ▼
+FastAPI
+ │
+ ▼
+Razorpay
+ │
+ ▼
+Payment
+ │
+ ▼
+Webhook
+ │
+ ▼
+FastAPI
+ │
+ ▼
+Order state
+```
+
+This keeps payment state deterministic and backend-controlled.
+
+The LLM can initiate a valid application operation, but it does not decide whether a payment has actually succeeded.
+
+---
+
+# Data Flow Example
+
+Consider:
+
+> "Show me products under ₹2,000 and add one to my cart."
+
+The complete request path is:
+
+```text
+                    User
+                     │
+                     ▼
+                  /chat
+                     │
+                     ▼
+                Internal Agent
+                     │
+                     ▼
+                    LLM
+                     │
+              search_products
+                     │
+                     ▼
+              Commerce Client
+                     │
+                     ▼
+                FastAPI API
+                     │
+                     ▼
+                 PostgreSQL
+                     │
+                     ▼
+               Search results
+                     │
+                     ▼
+                    LLM
+                     │
+              chooses product
+                     │
+                     ▼
+               add_to_cart
+                     │
+                     ▼
+                FastAPI API
+                     │
+                     ▼
+                 PostgreSQL
+                     │
+                     ▼
+                Agent response
+```
+
+An external MCP client follows the same backend path:
+
+```text
+External AI
+     │
+     ▼
+     MCP
+     │
+     ▼
+MCP Server
+     │
+     ▼
+CommerceClient
+     │
+     ▼
+FastAPI
+     │
+     ▼
+PostgreSQL
+```
+
+The interface changes; the underlying commerce system does not.
+
+---
+
+# Technology Stack
+
+| Layer                  | Technology                       |
+| ---------------------- | -------------------------------- |
+| Frontend               | HTML, CSS, JavaScript            |
+| Backend                | FastAPI                          |
+| Language               | Python                           |
+| AI Model               | Groq                             |
+| Agent                  | Custom Python tool-calling agent |
+| Agent Interoperability | Model Context Protocol           |
+| MCP Transport          | Streamable HTTP                  |
+| Authentication         | JWT + WorkOS AuthKit             |
+| Database               | PostgreSQL                       |
+| ORM                    | SQLAlchemy                       |
+| Migrations             | Alembic                          |
+| Payments               | Razorpay                         |
+| Deployment             | Render                           |
+| Package Management     | `uv`                             |
+
+---
+
+# Quick Start
+
+## 1. Clone the repository
+
+```bash
+git clone https://github.com/vedikasaklani/chatbot-and-mcp-agent-commerce.git
+cd chatbot-and-mcp-agent-commerce
+```
+
+## 2. Install dependencies
+
+The project uses `uv`.
 
 ```bash
 uv sync
 ```
 
-### Environment variables
+## 3. Configure environment variables
 
-Create a local `.env` file.
+Create your environment configuration with the credentials required by the application.
 
-Typical backend configuration:
+The main integrations require configuration for:
 
-```dotenv
-DATABASE_URL=postgresql+psycopg2://user:password@localhost:5432/database
-GROQ_API_KEY=your-groq-key
-WORKOS_API_KEY=your-workos-key
-razorpay_key=your-razorpay-key
-razorpay_secret=your-razorpay-secret
-razorpay_webhook_secret=your-webhook-secret
+```text
+DATABASE_URL
+GROQ_API_KEY
+WORKOS_*
+RAZORPAY_*
 ```
 
-For the MCP server, `BASE_URL` should point to the backend it calls:
+Use the project's existing environment configuration as the source of truth for the exact variable names.
 
-```dotenv
-BASE_URL=http://127.0.0.1:8000
-```
+Do not commit secrets to Git.
 
-When using the deployed backend, set `BASE_URL` to the deployed backend URL instead.
-
-**Never commit `.env` files, API keys, passwords, or database credentials.**
-
-## Database Setup
-
-The application uses PostgreSQL with SQLAlchemy and Alembic.
-
-Run the latest migrations from the repository root:
+## 4. Run database migrations
 
 ```bash
 uv run alembic upgrade head
 ```
 
-For a new deployment, run migrations against the deployment PostgreSQL database before relying on the API.
-
-### Local vs. production database
-
-Local development can use a local PostgreSQL URL:
-
-```dotenv
-DATABASE_URL=postgresql+psycopg2://user:password@localhost:5432/database
-```
-
-The deployed FastAPI service should use the **Render PostgreSQL Internal Database URL** in its Render environment variables.
-
-Do not hard-code the production database URL in source code or `alembic.ini`.
-
-## Run the Backend Locally
-
-From the repository root:
+## 5. Start the FastAPI backend
 
 ```bash
 uv run uvicorn api.main:app --reload
 ```
 
-The API will normally be available at:
+The API runs locally on port `8000`.
 
-```text
-http://127.0.0.1:8000
-```
-
-FastAPI's interactive documentation is available at:
+FastAPI's interactive API documentation is available at:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-## Run the MCP Server Locally
+## 6. Start the MCP server
 
-The MCP server uses Streamable HTTP.
-
-From the repository root:
+Run the MCP service separately:
 
 ```bash
 uv run python -m external.mcp_server
 ```
 
-The MCP server uses port `9000` by default locally and uses the `PORT` environment variable when deployed to Render.
+The MCP service uses port `9000`.
 
-The server should bind to `0.0.0.0` and use the deployment port, for example:
+For local external access, an HTTPS tunnel such as ngrok may be required depending on the MCP client being used.
 
-```python
-host="0.0.0.0"
-port=int(os.environ.get("PORT", 9000))
-```
+---
 
-## MCP Authentication with WorkOS
+# Configuration
 
-The MCP server uses WorkOS AuthKit through FastMCP's `AuthKitProvider`.
+The application depends on several external services:
 
-The high-level authentication flow is:
+### PostgreSQL
 
-```text
-External MCP Client
-        │
-        ▼
-WorkOS AuthKit
-        │
-        │ external_auth_id
-        ▼
-Backend /auth/workos/login
-        │
-        ▼
-Frontend login UI
-        │
-        │ existing email/password authentication
-        ▼
-Backend
-        │
-        │ /authkit/oauth2/complete
-        ▼
-WorkOS
-        │
-        ▼
-OAuth flow completes
-        │
-        ▼
-MCP Client receives OAuth credentials
-```
+Stores application and conversation state.
 
-The backend's GET endpoint accepts `external_auth_id`, redirects the user to the frontend login UI, and preserves that ID through the login flow. After successful authentication, the backend completes the WorkOS flow and returns the redirect supplied by WorkOS.
+### Groq
 
-### WorkOS configuration
+Provides the LLM used by the internal agent.
 
-Configure the WorkOS Login URI to point to the **deployed backend**, for example:
+### WorkOS
 
-```text
-https://YOUR-BACKEND.onrender.com/auth/workos/login
-```
+Provides authentication/OAuth for external MCP access.
 
-The MCP server's AuthKit provider should use the real AuthKit domain and deployed MCP base URL:
+### Razorpay
 
-```python
-AuthKitProvider(
-    authkit_domain="https://YOUR-PROJECT.authkit.app",
-    base_url="https://YOUR-MCP.onrender.com",
-)
-```
+Handles payment creation and payment status/webhooks.
 
-Replace the placeholders with the values from your WorkOS project and Render services.
+### Render
 
-The MCP endpoint is:
+The deployed application separates the frontend, backend, and MCP server into independently running services.
 
-```text
-https://YOUR-MCP.onrender.com/mcp
-```
+---
 
-## Render Deployment
+# Development
 
-The application is deployed as separate Render services.
-
-### 1. FastAPI Backend
-
-Create a **Web Service** using the repository root.
-
-Recommended settings:
-
-```text
-Root Directory:        leave blank
-Build Command:         pip install -r requirements.txt
-Start Command:         uvicorn api.main:app --host 0.0.0.0 --port $PORT
-```
-
-Configure the required production environment variables in Render, including:
-
-```text
-DATABASE_URL
-GROQ_API_KEY
-WORKOS_API_KEY
-razorpay_key
-razorpay_secret
-razorpay_webhook_secret
-```
-
-For the backend, use the **Render PostgreSQL Internal Database URL** for `DATABASE_URL`.
-
-### 2. MCP Server
-
-Create a separate **Web Service** using the same repository.
-
-Because `external/mcp_server.py` imports shared project modules such as `security` and `database`, keep the Render Root Directory at the repository root rather than setting it to `external`.
-
-Recommended settings:
-
-```text
-Root Directory:        leave blank
-Build Command:         pip install -r external/requirements.txt
-Start Command:         python -m external.mcp_server
-```
-
-Configure environment variables such as:
-
-```text
-BASE_URL=https://YOUR-BACKEND.onrender.com
-WORKOS_AUTHKIT_DOMAIN=https://YOUR-PROJECT.authkit.app
-MCP_BASE_URL=https://YOUR-MCP.onrender.com
-```
-
-The MCP service must bind to `0.0.0.0` and use Render's `PORT` environment variable.
-
-### 3. Frontend
-
-Create a **Static Site** for the `frontend/` directory.
-
-For the current plain HTML/CSS/JavaScript frontend:
-
-```text
-Root Directory:        frontend
-Build Command:         leave blank
-Publish Directory:     .
-```
-
-Set the frontend API base URL to the deployed backend URL, for example:
-
-```javascript
-const API_BASE = "https://YOUR-BACKEND.onrender.com";
-```
-
-The frontend is not a Python application, so it does not require a `requirements.txt` file.
-
-## Production Service URLs
-
-The deployed services follow this pattern:
+When modifying the project, keep the dependency direction in mind:
 
 ```text
 Frontend
-https://YOUR-FRONTEND.onrender.com
-
-Backend
-https://YOUR-BACKEND.onrender.com
-
-MCP
-https://YOUR-MCP.onrender.com/mcp
+    │
+    ▼
+FastAPI
+    │
+    ├── Database
+    ├── Razorpay
+    │
+    └── Agent
+          │
+          ▼
+     CommerceClient
 ```
 
-The backend is the shared API used by both the browser client and the MCP server.
+For MCP changes:
 
-## Verify MCP Tools
-
-The repository includes `test.py` for checking MCP tool visibility.
-
-Run from the repository root:
-
-```bash
-uv run python test.py
+```text
+MCP Server
+    │
+    ▼
+CommerceClient
+    │
+    ▼
+FastAPI
 ```
 
-The check requires an OAuth-capable MCP client and helps distinguish MCP discovery/authentication problems from backend request failures.
+Prefer extending the existing backend API rather than implementing the same business operation independently inside the MCP server or agent.
 
-The MCP server exposes tools including:
+---
 
-- `search_products`
-- `get_product`
-- `add_to_cart`
-- `view_cart`
-- `create_order`
-- `get_payment_link`
-- `check_order_status`
-- `get_ratings`
+# Contributing
 
-## Main API Capabilities
+When adding a new commerce capability:
 
-The backend supports:
+1. Implement the business operation in the FastAPI/backend layer.
+2. Add or update the appropriate database models/migrations if persistent state is required.
+3. Expose the operation through the API.
+4. Add it to the internal agent tools if the agent should use it.
+5. Add it to the MCP server if external AI clients should use it.
+6. Add tests for the backend behaviour and agent/MCP integration where appropriate.
 
-- Local user registration and login
-- WorkOS OAuth login for external clients
-- Product search and product details
-- Cart creation and updates
-- Customer and agent order creation
-- Razorpay payment links and payment verification
-- Product reviews and ratings
-- AI-assisted commerce through `/chat`
+The goal is to keep the architecture centralized:
 
-## Payment Flow
-
-Razorpay is used for payment processing after an order is created.
-
-The backend is responsible for order creation, payment-link generation, webhook handling, and payment verification, while the AI/MCP layer can expose the appropriate commerce actions to an external client.
-
-## Database Migration and Data Transfer
-
-Schema changes should be managed through Alembic:
-
-```bash
-uv run alembic upgrade head
+```text
+             New Capability
+                   │
+                   ▼
+            FastAPI Backend
+             /           \
+            /             \
+           ▼               ▼
+    Internal Agent       MCP Server
 ```
 
-For moving an existing local PostgreSQL database to Render, PostgreSQL dump/restore can be used. When restoring into the managed Render database, restore without trying to recreate the local `postgres` ownership/privilege metadata, for example:
+not:
 
-```bash
-pg_restore --no-owner --no-privileges -d "YOUR_RENDER_EXTERNAL_DATABASE_URL" backup.dump
+```text
+        New Capability
+          /    |    \
+         ▼     ▼     ▼
+      Agent   MCP   Backend
+      logic   logic   logic
 ```
 
-Use the Render **External Database URL** from the local machine for the transfer. The deployed backend should use the Render **Internal Database URL** afterward.
+The second approach creates duplicated business rules and makes the system harder to maintain.
 
-## Security Notes
+---
 
-- Keep `.env` files out of Git.
-- Store production secrets in Render environment variables.
-- Do not commit WorkOS, Groq, Razorpay, or database credentials.
-- Do not expose database credentials in logs or API responses.
-- Treat OAuth redirect URLs, bearer tokens, and MCP endpoints as sensitive security boundaries.
-- Use sanitized logs when reporting deployment issues.
+# Design Principles
 
-## Development Workflow
+### Backend owns state
 
-A typical local workflow is:
+Products, carts, orders, users, and payments are backend concerns.
 
-```bash
-uv sync
-uv run alembic upgrade head
-uv run uvicorn api.main:app --reload
-uv run python -m external.mcp_server
+### Agents own reasoning
+
+The LLM determines which available operation is useful and interprets the result.
+
+### Tools are controlled interfaces
+
+Agent tools translate model actions into authenticated application requests.
+
+### MCP is an interoperability boundary
+
+MCP allows external AI clients to use the commerce system without exposing the internal implementation.
+
+### Authentication follows the request
+
+Agent and MCP requests still resolve to an authenticated application user before accessing protected commerce operations.
+
+### Payments remain deterministic
+
+Payment verification and order state transitions are handled by the backend and payment provider, not by the LLM.
+
+---
+
+# The Big Picture
+
+This project can be summarized as:
+
+```text
+              ┌─────────────────────┐
+              │     Human User      │
+              └──────────┬──────────┘
+                         │
+                    Web / Chat
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │   FastAPI Backend   │◄──────────────┐
+              │                     │               │
+              │  Commerce + Auth    │               │
+              └─────────┬───────────┘               │
+                        │                            │
+               ┌────────┴────────┐                   │
+               ▼                 ▼                   │
+          PostgreSQL          Razorpay               │
+                                                     │
+                                            CommerceClient
+                                                     ▲
+                                                     │
+                                                MCP Server
+                                                     ▲
+                                                     │
+                                              External AI
 ```
 
-Then run the MCP verification check when needed:
+The system is therefore not simply **“a chatbot for an online store.”**
 
-```bash
-uv run python test.py
-```
+It is a **centralized commerce backend with multiple AI interfaces**:
 
-## Maintainer and Contributions
+* a built-in tool-calling agent for conversational commerce
+* an MCP server for external AI agents
+* a conventional web frontend for direct human interaction
 
-This project is maintained by **vedikasaklani**.
-
-To contribute:
-
-1. Create a focused branch.
-2. Make the smallest change needed.
-3. Run the relevant checks.
-4. Open a pull request describing the behavior change and validation.
-
-Please keep secrets out of commits and avoid unrelated formatting changes.
+All three ultimately rely on the same application layer, authentication model, database, and payment infrastructure.
