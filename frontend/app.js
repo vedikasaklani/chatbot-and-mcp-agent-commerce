@@ -17,8 +17,26 @@ const API = {
   PAY_URL: (orderId) => `${API_BASE}/razorpay/agent/orders/${orderId}/pay`,
   VERIFY_PAYMENT_URL: (orderId) => `${API_BASE}/razorpay/agent/orders/${orderId}/verify`,
 };
+
+const CHAT_SESSION_STORAGE_KEY = "chatSessionId";
+
+function createChatSessionId() {
+  if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getChatSessionId() {
+  const existingId = sessionStorage.getItem(CHAT_SESSION_STORAGE_KEY);
+  if (existingId) return existingId;
+
+  const sessionId = createChatSessionId();
+  sessionStorage.setItem(CHAT_SESSION_STORAGE_KEY, sessionId);
+  return sessionId;
+}
+
 const state = {
   authToken: sessionStorage.getItem("authToken") || null,
+  chatSessionId: getChatSessionId(),
   cart: { items: [], total: 0 }, 
 };
 
@@ -173,6 +191,8 @@ async function login(username, password) {
 logoutBtn.addEventListener("click", () => {
   state.authToken = null;
   sessionStorage.removeItem("authToken");
+  state.chatSessionId = createChatSessionId();
+  sessionStorage.setItem(CHAT_SESSION_STORAGE_KEY, state.chatSessionId);
   messagesEl.innerHTML = "";
   showLogin();
 });
@@ -225,7 +245,10 @@ function setComposerBusy(busy) {
 async function sendChatMessage(text) {
   const res = await fetch(API.CHAT_URL, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: authHeaders({
+      "Content-Type": "application/json",
+      "X-Chat-Session-Id": state.chatSessionId,
+    }),
     body: JSON.stringify({ messages: text }),
   });
 
