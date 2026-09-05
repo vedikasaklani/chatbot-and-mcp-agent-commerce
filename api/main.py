@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database.models import OrderCreate, OrderOut, ChatInput, User, Product
 from typing import Optional
-from agent.agent import run_agent, build_decision_record, clear_conversation
+from agent.agent import run_agent, build_decision_record
 from api import cart_service
 from api.reviews import reviews_router
 from database.database import session, get_db
@@ -60,16 +60,6 @@ def chat(
             db.commit()
 
     return result
-
-
-@app.delete("/chat/session", status_code=204)
-def clear_chat_session(
-    x_chat_session_id: str = Header(..., min_length=1, max_length=128),
-    _: database_models.User = Depends(get_current_user),
-):
-    """Clear transient agent context when the browser session ends."""
-    clear_conversation(x_chat_session_id)
-
 
 
 @app.get("/products")
