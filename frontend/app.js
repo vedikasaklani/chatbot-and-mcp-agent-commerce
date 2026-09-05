@@ -234,7 +234,7 @@ async function sendChatMessage(text) {
   if (handleAuthFailure(res)) throw new Error("Session expired — please sign in again.");
   if (!res.ok) throw new Error(`Assistant request failed (${res.status}).`);
 
-  // Response format from backend: { reply: string, products?: [...], cart?: {...}, order?: {...} }
+  // Response format from backend: { final_response: string, trace: [...], turns_used: number }
   return res.json();
 }
 
@@ -251,16 +251,28 @@ function renderAssistantReply(payload) {
     : productsFromTrace(payload.trace);
   if (products.length) addProductGrid(products);
 
-  const cart = payload.cart || resultFromTrace(payload.trace, "view_cart");
-  if (cart && !cart.error) applyCartUpdate(cart);
+  // The backend doesn't return cart state on /chat, and the agent doesn't
+  // always call view_cart in the same turn it mutates the cart (e.g. a bare
+  // add_to_cart with no follow-up lookup) -- so trace-sniffing for a
+  // view_cart result misses real cart changes. Refetch directly whenever a
+  // cart-mutating tool ran this turn instead.
+  if (cartMayHaveChanged(payload.trace)) {
+    refreshCart();
+  }
 
   const order = payload.order || resultFromTrace(payload.trace, "create_order");
   if (order && !order.error && order.id != null) addOrderCard(order);
 }
 
+const CART_MUTATING_TOOLS = new Set(["add_to_cart", "remove_from_cart", "create_order"]);
+
+function cartMayHaveChanged(trace) {
+  return Array.isArray(trace) && trace.some((entry) => entry && CART_MUTATING_TOOLS.has(entry.tool));
+}
+
 function productsFromTrace(trace) {
   if (!Array.isArray(trace)) return [];
-  const listed = resultFromTrace(trace, "list_products");
+  const listed = resultFromTrace(trace, "search_products");
   if (Array.isArray(listed) && listed.length) return listed;
   const single = resultFromTrace(trace, "get_product");
   if (single && !single.error && single.pid != null) return [single];
