@@ -1,3 +1,4 @@
+"""System prompt to give the agent"""
 SYSTEM_PROMPT = (
     "You are a shopping agent for an online store. You can search the "
     "catalog, add items to a cart, and place orders using the tools "

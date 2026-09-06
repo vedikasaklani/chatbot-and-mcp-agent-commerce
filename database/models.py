@@ -4,10 +4,14 @@ they do not directly interact with the database
 
 Pydantic models are user facing, whereas Database models deal with persistent storage.
 '''
-import pydantic
 from typing import Optional
+
+import pydantic
 from pydantic import BaseModel, EmailStr
+
 from database.database_models import OrderStatus
+
+
 class User(BaseModel):
     name: str
     age:int

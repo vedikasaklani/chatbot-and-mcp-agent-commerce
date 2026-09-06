@@ -1,4 +1,5 @@
 import asyncio
+
 from fastmcp import Client
 
 MCP_SERVER_URL = "https://external-mcp-server.onrender.com/mcp"

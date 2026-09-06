@@ -1,5 +1,6 @@
 import bcrypt
 
+
 def get_password_hash(password: str) -> str:
     """Return a bcrypt hash suitable for storage in the database."""
     if not isinstance(password, str):

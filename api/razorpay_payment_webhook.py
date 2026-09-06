@@ -1,3 +1,4 @@
+"""Webhook to await user payment on razorpay and update the db on successful payment"""
 import json
 import os
 
@@ -8,7 +9,6 @@ from sqlalchemy.orm import Session, joinedload
 from api.razorpay_integration import amount_to_paise, client
 from database import database_models
 from database.database import get_db
-
 
 webhook_router = APIRouter(tags=["webhook"])
 WEBHOOK_SECRET = os.environ["razorpay_webhook_secret"]

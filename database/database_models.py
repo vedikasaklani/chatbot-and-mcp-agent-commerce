@@ -1,10 +1,14 @@
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer,JSON, String, ForeignKey, Float, Enum, DateTime, UUID
-from sqlalchemy.orm import relationship
+"""Core database model for ecommerce store"""
 import enum
-from sqlalchemy.dialects.postgresql import ARRAY
-from datetime import datetime
 import uuid
+from datetime import datetime
+
+from sqlalchemy import (JSON, UUID, Column, DateTime, Enum, Float, ForeignKey,
+                        Integer, String)
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+
 Base=declarative_base()
 
 class User(Base):

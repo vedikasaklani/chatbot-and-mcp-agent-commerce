@@ -1,21 +1,25 @@
-from fastapi import FastAPI, Depends, HTTPException
-import database.database_models as database_models
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from database.models import OrderCreate, OrderOut, ChatInput, User, Product
+"""Basic operations for agent to interact with ecommerce store"""
+"""APIs for search, cart management, ordering and payment"""
+from pathlib import Path
 from typing import Optional
-from agent.agent import run_agent, build_decision_record
+
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
+from sqlalchemy.sql.operators import ilike_op
+
+import database.database_models as database_models
+from agent.agent import build_decision_record, run_agent
 from api import cart_service
-from api.reviews import reviews_router
-from database.database import session, get_db
+from api.auth import router as auth_router
 from api.dependencies import oauth_scheme1
 from api.razorpay_integration import agent_router, customer_router
-from api.auth import router as auth_router
-from security import get_current_user, oauth2_scheme
-from sqlalchemy.sql.operators import ilike_op
 from api.razorpay_payment_webhook import webhook_router
-from pathlib import Path
-from fastapi.staticfiles import StaticFiles
+from api.reviews import reviews_router
+from database.database import get_db, session
+from database.models import ChatInput, OrderCreate, OrderOut, Product, User
+from security import get_current_user, oauth2_scheme
 
 app = FastAPI()
 

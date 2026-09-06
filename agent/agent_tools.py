@@ -1,3 +1,6 @@
+from commerce_client import commerce_client
+
+
 TOOLS = [
     {
         "type": "function",
@@ -198,10 +201,6 @@ TOOLS = [
     }
 
 ]
-
-
-# Dispatcher to map a tool call onto the shared commerce client.
-from commerce_client import commerce_client
 
 
 def execute_tool(name: str, auth_token: str, arguments: dict) -> dict:

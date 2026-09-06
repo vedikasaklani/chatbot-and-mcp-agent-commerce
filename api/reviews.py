@@ -1,8 +1,10 @@
+"""API to get reviews for a profuct based on product_id"""
 from fastapi import APIRouter, Depends
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
 from database.database import get_db
 from database.database_models import Review
-from sqlalchemy.orm import Session
-from sqlalchemy import func
 
 reviews_router = APIRouter(prefix="/reviews", tags=["reviews"])
 

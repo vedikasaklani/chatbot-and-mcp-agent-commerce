@@ -1,4 +1,4 @@
-#Cart business logic
+"""Cart business logic"""
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 

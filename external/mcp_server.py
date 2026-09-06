@@ -1,13 +1,19 @@
+"""MCP server tools to provide to external clients"""
+import json
 import os
+
+from fastapi import HTTPException
 from fastmcp import FastMCP
 from fastmcp.server.auth.providers.workos import AuthKitProvider
 from fastmcp.server.dependencies import get_access_token
-from fastapi import HTTPException
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
-from security import create_access_token       
+from commerce_client import commerce_client
 from database.database import get_db
 from database.database_models import User
-from commerce_client import commerce_client
+from security import create_access_token
 
 mcp = FastMCP(
     "ecommerce-agent",
@@ -103,11 +109,7 @@ def get_ratings(product_id: int) -> dict:
     """Get customer reviews and average rating for a product by ID."""
     return _envelope("ratings", commerce_client.get_ratings(_headers(), product_id))
 
-#Workaround for pydantic httpurl automatically adding a slash at end: causes a mismatch error
-import json
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
-
+# Workaround for pydantic httpurl automatically adding a slash at end: causes a mismatch error
 METADATA_PATHS = {
     "/.well-known/oauth-protected-resource/mcp",
     "/.well-known/oauth-authorization-server/mcp",
@@ -144,8 +146,6 @@ class StripTrailingSlashMiddleware(BaseHTTPMiddleware):
             },
             media_type=response.media_type or "application/json",
         )
-
-from starlette.middleware import Middleware
 
 if __name__ == "__main__":
     mcp.run(

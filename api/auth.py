@@ -1,19 +1,22 @@
+"Authorisation endpoints for OAuth as well as application flow"
+import os
+
 import requests
-from fastapi import APIRouter, Depends, HTTPException,Query, Form
+from dotenv import load_dotenv
+from fastapi import APIRouter, Depends, Form, HTTPException, Query
+from fastapi.responses import RedirectResponse
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session
+
+import database.database_models as database_models
 from api.dependencies import oauth_scheme1
 from database.database import get_db
-from sqlalchemy.orm import Session
-import database.database_models as database_models
-from utils.auth import get_password_hash, verify_password
 from database.database_models import User
 from database.models import RegisterRequest
 from security import create_access_token
-from fastapi.security import OAuth2PasswordRequestForm
-from fastapi.responses import RedirectResponse
+from utils.auth import get_password_hash, verify_password
 
-from dotenv import load_dotenv
 load_dotenv()
-import os
 
 WORKOS_API_KEY = os.getenv("WORKOS_API_KEY")
 

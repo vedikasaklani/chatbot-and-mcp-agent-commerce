@@ -1,20 +1,23 @@
-from dotenv import load_dotenv
-load_dotenv()
+"""APIs to collaborate with razorpay payment apis"""
+import logging
 import os
 import time
-import logging
-import razorpay
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
+
+from dotenv import load_dotenv
+import razorpay
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session, contains_eager, joinedload
+
 import database.database_models as db_mdl
-from fastapi import Depends, HTTPException, Request, APIRouter
-from database.models import OrderOut, PaymentInitiate
-from database.database_models import CartItem, Product, User
-from sqlalchemy.orm import Session, joinedload, contains_eager
 from database.database import get_db
+from database.database_models import CartItem, Product, User
+from database.models import OrderOut, PaymentInitiate
 from security import get_current_user
 from utils import get_cart
 
+load_dotenv()
 
 customer_router = APIRouter(
     prefix="/razorpay",

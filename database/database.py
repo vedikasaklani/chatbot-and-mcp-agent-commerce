@@ -1,10 +1,15 @@
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
-import database.database_models as database_models
-from fastapi import Depends
-from dotenv import load_dotenv
-load_dotenv()
+"""Database configuration file"""
 import os
+
+from dotenv import load_dotenv
+from fastapi import Depends
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+import database.database_models as database_models
+
+load_dotenv()
+
 # we keep autocommit and autoflush off: to maintain unit of work (db is not updated per operation)
 #: to maintain atomicity (if subsequent transactions are failing, the prior ones should not execute.
 # so we cannot execute the transactions one by one simply)

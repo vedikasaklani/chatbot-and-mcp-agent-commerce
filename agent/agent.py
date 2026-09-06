@@ -1,14 +1,16 @@
 """
 Agent loop using Groq's OpenAI-compatible client for tool calling.
 """
-import os
 import json
+import os
 from datetime import datetime, timedelta
+
 from dotenv import load_dotenv
 from openai import OpenAI
 from sqlalchemy.orm import Session
-from agent.prompts import SYSTEM_PROMPT
+
 from agent.agent_tools import TOOLS, execute_tool
+from agent.prompts import SYSTEM_PROMPT
 from database.database_models import ConversationSession
 
 load_dotenv()
