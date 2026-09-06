@@ -1,77 +1,143 @@
-# AI Commerce Agent
+# Agent Commerce
 
-An e-commerce system designed to be operated by both **people and AI agents**.
+### An e-commerce backend built for both humans and AI agents.
 
-The project combines a traditional commerce backend with an AI agent and a **Model Context Protocol (MCP)** interface. A user can browse products, manage a cart, place orders, and initiate payments through the web application or conversationally **through the agent**.
+Traditional e-commerce APIs are designed for applications.
 
-External AI clients can access the same commerce capabilities **through MCP**.
+This project makes the same commerce capabilities available to **AI agents** — without giving an LLM direct control over application state.
 
-The core design principle is:
+A user can browse products, manage a cart, place an order, and initiate payment through the web application or conversationally through the built-in AI agent. External AI clients can perform the same operations through an **OAuth-protected MCP server**.
 
-> **The agent decides what to do. The backend decides how it is done.**
+The core idea is simple:
 
-The FastAPI backend remains the source of truth for authentication, commerce logic, database operations, and payments. The AI and MCP layers sit on top of it rather than implementing separate commerce systems.
+> **The agent decides what to do. The backend decides whether and how it happens.**
 
 ---
 
-## Architecture
+## The Architecture
 
 ```text
-                         ┌──────────────────────┐
-                         │     Web Frontend     │
-                         │      HTML / JS       │
-                         └──────────┬───────────┘
-                                    │
-                                    │ HTTP + JWT
-                                    ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       FastAPI Backend                       │
-│                                                             │
-│  Authentication   Products   Cart   Orders   Reviews       │
-│                                                             │
-│                         /chat                               │
-│                           │                                 │
-│                           ▼                                 │
-│                     Internal Agent                          │
-│                     ┌────────────┐                          │
-│                     │    LLM     │                          │
-│                     └─────┬──────┘                          │
-│                           │                                  │
-│                      Tool calls                              │
+                         HUMAN USER
+                             │
+                    Web Application
+                             │
+                             ▼
+┌──────────────────────────────────────────────────────────────┐
+│                        FASTAPI BACKEND                       │
+│                                                              │
+│   Auth │ Products │ Cart │ Orders │ Reviews │ Payments       │
+│                                                              │
+│                         /chat                                │
 │                           │                                  │
 │                           ▼                                  │
-│                    Commerce Tools                            │
-└───────────────┬─────────────────────┬──────────────────────┘
-                │                     │
-                ▼                     ▼
-          PostgreSQL               Razorpay
-                ▲
+│                     INTERNAL AGENT                           │
+│                           │                                  │
+│                           ▼                                  │
+│                          LLM                                 │
+│                           │                                  │
+│                      Tool calls                              │
+└───────────────────────────┼──────────────────────────────────┘
+                            │
+                            │
+                       Commerce API
+                            │
+                 ┌──────────┴──────────┐
+                 ▼                     ▼
+             PostgreSQL             Razorpay
+
+
+        EXTERNAL AI CLIENT
                 │
-                │ HTTP
+             OAuth
                 │
-        ┌───────┴────────┐
-        │ CommerceClient │
-        └───────▲────────┘
+                ▼
+          ┌───────────┐
+          │ MCP Server│
+          └─────┬─────┘
                 │
-        ┌───────┴────────┐
-        │   MCP Server   │
-        │ external/      │
-        │ mcp_server.py  │
-        └───────▲────────┘
+                ▼
+         CommerceClient
                 │
-             MCP/OAuth
+             HTTP + JWT
                 │
-        ┌───────┴────────┐
-        │ External AI    │
-        │ Client         │
-        └────────────────┘
+                ▼
+          FASTAPI BACKEND
 ```
 
-There are two ways an AI agent can interact with the commerce system:
+There are **multiple ways into the system, but only one commerce authority**.
 
-### Internal agent
+The frontend, internal agent, and external MCP clients ultimately rely on the same backend for authentication, validation, persistence, orders, and payments.
 
-The chatbot is part of the FastAPI application.
+---
+
+# Why this matters
+
+Giving an LLM direct access to a database or payment system would make the model responsible for things it should not control.
+
+Instead, this project creates a deterministic boundary:
+
+```text
+┌──────────────────────────────┐
+│        AI / LLM Layer        │
+│                              │
+│  Understand intent           │
+│  Select tools                │
+│  Interpret results           │
+└──────────────┬───────────────┘
+               │
+          Tool interface
+               │
+               ▼
+┌──────────────────────────────┐
+│       Application Layer      │
+│                              │
+│  Authentication              │
+│  Validation                  │
+│  Business rules              │
+│  Authorization               │
+│  State changes                │
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│       System of Record       │
+│                              │
+│  PostgreSQL                  │
+│  Razorpay                    │
+└──────────────────────────────┘
+```
+
+The LLM can **request**:
+
+```text
+create_order(...)
+```
+
+but it cannot simply decide:
+
+```text
+"the payment succeeded"
+```
+
+The backend and payment provider determine the actual state.
+
+This separation is what allows an AI agent to participate in real commerce without making the AI itself the source of truth.
+
+---
+
+# One Commerce API, Two Agent Interfaces
+
+The project has two distinct agent paths.
+
+## 1. Built-in AI Agent
+
+The internal chatbot lives in `agent/`.
+
+A request such as:
+
+> "Find me a laptop under ₹50,000 and add the best one to my cart."
+
+becomes a sequence of tool calls:
 
 ```text
 User
@@ -80,93 +146,201 @@ User
 POST /chat
  │
  ▼
-AI Agent
+LLM
  │
- ▼
-LLM chooses a tool
+ ├── search_products()
  │
- ▼
-Agent Tool
+ ├── get_product()
  │
- ▼
-Commerce API
- │
- ▼
-PostgreSQL / Razorpay
+ └── add_to_cart()
+          │
+          ▼
+     CommerceClient
+          │
+          ▼
+       FastAPI
+          │
+          ▼
+      PostgreSQL
 ```
 
-### External MCP agent
+The model handles reasoning and tool selection.
 
-An external AI client connects through MCP.
+The API handles the actual operation.
 
-```text
-External AI Client
- │
- │ MCP + OAuth
- ▼
-MCP Server
- │
- ▼
-CommerceClient
- │
- │ HTTP + JWT
- ▼
-FastAPI Backend
- │
- ▼
-PostgreSQL / Razorpay
-```
-
-Both paths eventually use the **same FastAPI commerce API**.
-
-This avoids duplicating business logic between the chatbot, MCP server, and web application.
+The agent therefore behaves like an **authenticated API client**, rather than having privileged access to the database.
 
 ---
 
-# Why this architecture?
+## 2. External AI through MCP
 
-A language model should not be responsible for directly changing application state.
-
-For example, when a user says:
-
-> "Find me a laptop under ₹50,000 and add the best one to my cart."
-
-the agent can reason about what needs to happen:
+The same commerce capabilities are exposed through the **Model Context Protocol**.
 
 ```text
-search_products()
-       ↓
-get_product()
-       ↓
-add_to_cart()
+External AI Client
+        │
+        │ MCP
+        ▼
+   MCP Server
+        │
+        ▼
+ CommerceClient
+        │
+        │ HTTP + JWT
+        ▼
+ FastAPI Backend
+        │
+        ▼
+ PostgreSQL / Razorpay
 ```
 
-But the actual operations are performed by the backend.
+The MCP server does not create a second implementation of the store.
+
+It translates MCP tool calls into requests against the existing commerce API.
+
+This means an external agent can use operations such as:
 
 ```text
-LLM
+search_products
+get_product
+view_cart
+add_to_cart
+remove_from_cart
+create_order
+get_payment_link
+check_order_status
+get_ratings
+```
+
+while the backend continues to enforce the same application rules.
+
+---
+
+# Authentication: From External Identity to Application Identity
+
+External MCP access is protected with **WorkOS AuthKit / OAuth**.
+
+The important part is that external authentication does not bypass the application's existing authorization model.
+
+```text
+External AI Client
+        │
+        ▼
+   WorkOS OAuth
+        │
+        ▼
+    MCP Server
+        │
+        │ identify user
+        ▼
+ Application User
+        │
+        ▼
+    Backend JWT
+        │
+        ▼
+     FastAPI
+```
+
+Once the external identity has been mapped to an application user, requests reach the backend using the same JWT-based authentication mechanism used by the application.
+
+So the MCP layer is not a privileged backdoor into the database.
+
+---
+
+# Agent State Is Persistent
+
+The chatbot is not just a stateless prompt/response wrapper.
+
+Conversation sessions are persisted in PostgreSQL.
+
+```text
+ConversationSession
+        │
+        ├── user message
+        ├── assistant message
+        ├── tool call
+        ├── tool result
+        └── next turn
+```
+
+The agent can therefore maintain conversational context across requests.
+
+The session handling also includes concurrency protection and bounded context/idle behaviour, preventing the conversation from becoming an unbounded accumulation of messages.
+
+---
+
+# Agent Actions Can Be Traced
+
+When the agent creates an order, the application extracts information from the agent's execution trace and associates a structured decision record with the order.
+
+```text
+User Request
+     │
+     ▼
+   Agent
+     │
+     ├── search_products()
+     ├── get_product()
+     ├── add_to_cart()
+     └── create_order()
+              │
+              ▼
+            Order
+              │
+              ▼
+       Decision Record
+```
+
+This gives agent-driven commerce actions a record of **what the user asked for, what the agent did, and what operation resulted in the order**.
+
+The purpose is not to make the LLM authoritative.
+
+It is the opposite:
+
+> **Agent reasoning can be recorded while application state remains backend-controlled.**
+
+---
+
+# Payments Stay Deterministic
+
+Payments are handled by the backend through Razorpay.
+
+The agent can initiate commerce operations such as:
+
+```text
+create_order()
+get_payment_link()
+check_order_status()
+```
+
+but the payment lifecycle remains outside the model:
+
+```text
+Agent
  │
- │ decides
- ▼
-Tool
- │
- │ requests
  ▼
 FastAPI
  │
- │ validates + executes
  ▼
-Database
+Razorpay
+ │
+ ▼
+Payment
+ │
+ ▼
+Webhook
+ │
+ ▼
+FastAPI
+ │
+ ▼
+Order state
 ```
 
-This separation gives the system a clear boundary:
+The LLM can ask the system to perform an operation.
 
-* **LLM** — reasoning and tool selection
-* **Agent tools** — translate model requests into application operations
-* **FastAPI** — authentication, validation, business logic, and side effects
-* **PostgreSQL** — persistent state
-* **Razorpay** — payment processing
-* **MCP** — standard interface for external AI clients
+It cannot manufacture a successful payment result.
 
 ---
 
@@ -211,401 +385,74 @@ This separation gives the system a clear boundary:
 └── uv.lock
 ```
 
-### `api/`
+### Core responsibilities
 
-The main application layer.
-
-It contains the FastAPI application, authentication, cart logic, reviews, orders, and Razorpay integration.
-
-This is where the application's actual commerce rules live.
-
-### `agent/`
-
-Contains the internal AI agent.
-
-* `agent.py` — agent execution and tool-calling loop
-* `agent_tools.py` — tools exposed to the LLM
-* `prompts.py` — agent instructions/prompts
-
-The agent can call commerce operations, but it does not directly access the database.
-
-### `commerce_client.py`
-
-A thin HTTP client used to communicate with the FastAPI commerce API.
-
-It creates an explicit boundary between agent-facing code and backend implementation.
-
-```text
-Agent / MCP
-     │
-     ▼
-CommerceClient
-     │
-     ▼
-FastAPI
-```
-
-### `external/`
-
-Contains the MCP server.
-
-`mcp_server.py` exposes commerce functionality as MCP tools for external AI clients.
-
-The MCP tools use `CommerceClient` instead of implementing their own database or commerce logic.
-
-### `database/`
-
-Contains SQLAlchemy database configuration/models and Alembic migrations.
-
-PostgreSQL stores both commerce state and agent-related state such as conversation sessions.
-
-### `frontend/`
-
-The browser-facing application.
-
-It communicates with the FastAPI backend over HTTP.
-
-### `security.py`
-
-Contains application-level JWT authentication and user resolution.
+| Component            | Responsibility                                                |
+| -------------------- | ------------------------------------------------------------- |
+| `api/`               | Commerce API, authentication, orders, cart, reviews, payments |
+| `agent/`             | LLM reasoning and tool-calling loop                           |
+| `commerce_client.py` | HTTP interface between agent-facing code and the backend      |
+| `external/`          | MCP interface for external AI clients                         |
+| `database/`          | SQLAlchemy models, persistence, and migrations                |
+| `security.py`        | JWT authentication                                            |
+| `frontend/`          | Human-facing web application                                  |
+| `tests/`             | Application and integration tests                             |
 
 ---
 
-# Agent Architecture
+# Request Lifecycle
 
-The internal agent is implemented as a bounded tool-calling loop.
-
-Conceptually:
+A normal conversational purchase looks like this:
 
 ```text
-                     User Message
-                          │
-                          ▼
-                    ┌───────────┐
-                    │    LLM    │
-                    └─────┬─────┘
-                          │
-                 ┌────────┴────────┐
-                 │                 │
-          normal response       tool call
-                                   │
-                                   ▼
-                             execute_tool()
-                                   │
-                                   ▼
-                            Commerce API
-                                   │
-                                   ▼
-                                result
-                                   │
-                                   └──────► LLM
-                                              │
-                                              ▼
-                                       Final response
+"Add a good laptop under ₹50,000 to my cart."
+                  │
+                  ▼
+             /chat
+                  │
+                  ▼
+              AI Agent
+                  │
+                  ▼
+                 LLM
+                  │
+           chooses tools
+                  │
+                  ▼
+          search_products()
+                  │
+                  ▼
+           FastAPI /products
+                  │
+                  ▼
+              PostgreSQL
+                  │
+                  ▼
+             search result
+                  │
+                  ▼
+                 LLM
+                  │
+                  ▼
+           add_to_cart()
+                  │
+                  ▼
+            FastAPI /cart
+                  │
+                  ▼
+              PostgreSQL
+                  │
+                  ▼
+           Final response
 ```
 
-The agent does not blindly execute an unlimited number of calls. Its tool-calling process is bounded by a maximum number of turns.
-
-This prevents a malformed model response from creating an unbounded execution loop.
-
----
-
-# Agent Tools
-
-The tools exposed to the internal agent correspond to commerce operations such as:
-
-```text
-search_products
-get_product
-add_to_cart
-remove_from_cart
-view_cart
-create_order
-get_payment_link
-check_order_status
-get_ratings
-```
-
-The important part is what happens after the LLM chooses one.
-
-For example:
-
-```text
-LLM
- │
- │ search_products(...)
- ▼
-Agent Tool
- │
- ▼
-CommerceClient
- │
- │ HTTP
- ▼
-GET /products
- │
- ▼
-FastAPI
- │
- ▼
-PostgreSQL
-```
-
-The agent therefore behaves like an authenticated API client rather than having privileged access to application internals.
-
----
-
-# MCP Architecture
-
-The MCP server exposes the commerce capabilities to external AI clients.
-
-```text
-┌──────────────────┐
-│   External AI    │
-└────────┬─────────┘
-         │
-         │ MCP
-         ▼
-┌──────────────────┐
-│   MCP Server     │
-│                  │
-│ MCP tool layer   │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ CommerceClient   │
-└────────┬─────────┘
-         │
-         │ HTTP
-         ▼
-┌──────────────────┐
-│ FastAPI Backend  │
-└──────────────────┘
-```
-
-The MCP layer is therefore an **interoperability layer**, not a second backend.
-
-This makes the MCP interface relatively thin:
-
-```text
-MCP tool
-   ↓
-CommerceClient
-   ↓
-FastAPI endpoint
-```
-
-The same backend validation and authorization rules apply regardless of whether the request originated from the frontend, internal agent, or MCP client.
-
----
-
-# Authentication
-
-The application uses JWT-based authentication for its normal API access.
-
-```text
-User Login
-    │
-    ▼
-JWT
-    │
-    ▼
-FastAPI
-    │
-    ▼
-Authenticated User
-```
-
-For external MCP access, WorkOS AuthKit is used for the OAuth flow.
-
-The important distinction is:
-
-```text
-WorkOS
-  │
-  │ authenticates external identity
-  ▼
-MCP Server
-  │
-  │ maps identity to application user
-  ▼
-Application JWT
-  │
-  ▼
-FastAPI
-```
-
-This allows external AI clients to enter the same authorization model used by the rest of the application.
-
----
-
-# Conversation State
-
-The chatbot maintains conversation state using a `ConversationSession`.
-
-A simplified flow is:
-
-```text
-User
- │
- ▼
-/chat
- │
- ▼
-Find user's conversation session
- │
- ▼
-Load previous messages
- │
- ▼
-Run agent
- │
- ├── user message
- ├── assistant messages
- ├── tool calls
- └── tool results
- │
- ▼
-Persist updated conversation
-```
-
-The session is persisted in PostgreSQL rather than existing only in the process memory of the FastAPI server.
-
-The agent also uses a bounded context window/idle timeout so that conversations do not grow indefinitely.
-
----
-
-# Agent Decision Records
-
-When an agent creates an order, the application can associate a structured decision record with that order.
-
-The flow is:
-
-```text
-User Request
-     │
-     ▼
-Agent
-     │
-     ├── tool call
-     ├── tool call
-     └── create_order
-              │
-              ▼
-            Order
-              │
-              ▼
-       Decision Record
-```
-
-The record captures information from the agent execution, including the request, tool trace, and resulting decision.
-
-This provides a basic audit trail for agent-driven commerce actions.
-
----
-
-# Payments
-
-Payment processing is deliberately kept outside the agent.
-
-The agent can request operations such as:
-
-```text
-create_order()
-get_payment_link()
-check_order_status()
-```
-
-but the actual payment workflow is implemented by the backend.
-
-```text
-Agent
- │
- ▼
-FastAPI
- │
- ▼
-Razorpay
- │
- ▼
-Payment
- │
- ▼
-Webhook
- │
- ▼
-FastAPI
- │
- ▼
-Order state
-```
-
-This keeps payment state deterministic and backend-controlled.
-
-The LLM can initiate a valid application operation, but it does not decide whether a payment has actually succeeded.
-
----
-
-# Data Flow Example
-
-Consider:
-
-> "Show me products under ₹2,000 and add one to my cart."
-
-The complete request path is:
-
-```text
-                    User
-                     │
-                     ▼
-                  /chat
-                     │
-                     ▼
-                Internal Agent
-                     │
-                     ▼
-                    LLM
-                     │
-              search_products
-                     │
-                     ▼
-              Commerce Client
-                     │
-                     ▼
-                FastAPI API
-                     │
-                     ▼
-                 PostgreSQL
-                     │
-                     ▼
-               Search results
-                     │
-                     ▼
-                    LLM
-                     │
-              chooses product
-                     │
-                     ▼
-               add_to_cart
-                     │
-                     ▼
-                FastAPI API
-                     │
-                     ▼
-                 PostgreSQL
-                     │
-                     ▼
-                Agent response
-```
-
-An external MCP client follows the same backend path:
+An external AI client follows the same underlying commerce path:
 
 ```text
 External AI
      │
      ▼
-     MCP
+    MCP
      │
      ▼
 MCP Server
@@ -616,38 +463,47 @@ CommerceClient
      ▼
 FastAPI
      │
-     ▼
-PostgreSQL
+     ├── PostgreSQL
+     └── Razorpay
 ```
 
-The interface changes; the underlying commerce system does not.
+The **interface changes; the commerce system does not**.
 
 ---
 
 # Technology Stack
 
-| Layer                  | Technology                       |
-| ---------------------- | -------------------------------- |
-| Frontend               | HTML, CSS, JavaScript            |
-| Backend                | FastAPI                          |
-| Language               | Python                           |
-| AI Model               | Groq                             |
-| Agent                  | Custom Python tool-calling agent |
-| Agent Interoperability | Model Context Protocol           |
-| MCP Transport          | Streamable HTTP                  |
-| Authentication         | JWT + WorkOS AuthKit             |
-| Database               | PostgreSQL                       |
-| ORM                    | SQLAlchemy                       |
-| Migrations             | Alembic                          |
-| Payments               | Razorpay                         |
-| Deployment             | Render                           |
-| Package Management     | `uv`                             |
+| Layer              | Technology                       |
+| ------------------ | -------------------------------- |
+| Backend            | FastAPI                          |
+| Language           | Python                           |
+| AI                 | Groq                             |
+| Agent              | Custom Python tool-calling agent |
+| Agent Protocol     | Model Context Protocol           |
+| MCP Transport      | Streamable HTTP                  |
+| Authentication     | JWT + WorkOS AuthKit             |
+| Database           | PostgreSQL                       |
+| ORM                | SQLAlchemy                       |
+| Migrations         | Alembic                          |
+| Payments           | Razorpay                         |
+| Frontend           | HTML, CSS, JavaScript            |
+| Package Management | `uv`                             |
+| Deployment         | Render                           |
 
 ---
 
 # Quick Start
 
-## 1. Clone the repository
+## Prerequisites
+
+* Python 3.12+
+* PostgreSQL
+* `uv`
+* API credentials for Groq
+* WorkOS credentials for external MCP authentication
+* Razorpay credentials for payment functionality
+
+## 1. Clone
 
 ```bash
 git clone https://github.com/vedikasaklani/chatbot-and-mcp-agent-commerce.git
@@ -656,17 +512,13 @@ cd chatbot-and-mcp-agent-commerce
 
 ## 2. Install dependencies
 
-The project uses `uv`.
-
 ```bash
 uv sync
 ```
 
 ## 3. Configure environment variables
 
-Create your environment configuration with the credentials required by the application.
-
-The main integrations require configuration for:
+Configure the credentials required by the application:
 
 ```text
 DATABASE_URL
@@ -675,25 +527,29 @@ WORKOS_*
 RAZORPAY_*
 ```
 
-Use the project's existing environment configuration as the source of truth for the exact variable names.
+Use the project's environment configuration as the source of truth for the exact variable names.
 
-Do not commit secrets to Git.
+Never commit secrets.
 
-## 4. Run database migrations
+## 4. Run migrations
 
 ```bash
 uv run alembic upgrade head
 ```
 
-## 5. Start the FastAPI backend
+## 5. Start the API
 
 ```bash
 uv run uvicorn api.main:app --reload
 ```
 
-The API runs locally on port `8000`.
+The API will be available on:
 
-FastAPI's interactive API documentation is available at:
+```text
+http://127.0.0.1:8000
+```
+
+Interactive API documentation:
 
 ```text
 http://127.0.0.1:8000/docs
@@ -701,182 +557,122 @@ http://127.0.0.1:8000/docs
 
 ## 6. Start the MCP server
 
-Run the MCP service separately:
+In a separate terminal:
 
 ```bash
 uv run python -m external.mcp_server
 ```
 
-The MCP service uses port `9000`.
-
-For local external access, an HTTPS tunnel such as ngrok may be required depending on the MCP client being used.
+The MCP service runs separately from the main API and communicates with it through `CommerceClient`.
 
 ---
 
-# Configuration
+# Development Principles
 
-The application depends on several external services:
-
-### PostgreSQL
-
-Stores application and conversation state.
-
-### Groq
-
-Provides the LLM used by the internal agent.
-
-### WorkOS
-
-Provides authentication/OAuth for external MCP access.
-
-### Razorpay
-
-Handles payment creation and payment status/webhooks.
-
-### Render
-
-The deployed application separates the frontend, backend, and MCP server into independently running services.
-
----
-
-# Development
-
-When modifying the project, keep the dependency direction in mind:
+When adding a new capability, keep the dependency direction:
 
 ```text
-Frontend
-    │
-    ▼
-FastAPI
-    │
-    ├── Database
-    ├── Razorpay
-    │
-    └── Agent
+New Commerce Capability
           │
           ▼
-     CommerceClient
+    FastAPI Backend
+       /       \
+      /         \
+     ▼           ▼
+Internal Agent   MCP Server
 ```
 
-For MCP changes:
+rather than implementing business logic independently in every interface.
 
-```text
-MCP Server
-    │
-    ▼
-CommerceClient
-    │
-    ▼
-FastAPI
-```
+For example, if a new commerce operation is required:
 
-Prefer extending the existing backend API rather than implementing the same business operation independently inside the MCP server or agent.
+1. Implement the operation in the backend.
+2. Expose it through the API.
+3. Add an agent tool if the internal agent should use it.
+4. Add an MCP tool if external agents should use it.
+5. Test the backend behaviour and relevant agent/MCP path.
 
----
-
-# Contributing
-
-When adding a new commerce capability:
-
-1. Implement the business operation in the FastAPI/backend layer.
-2. Add or update the appropriate database models/migrations if persistent state is required.
-3. Expose the operation through the API.
-4. Add it to the internal agent tools if the agent should use it.
-5. Add it to the MCP server if external AI clients should use it.
-6. Add tests for the backend behaviour and agent/MCP integration where appropriate.
-
-The goal is to keep the architecture centralized:
-
-```text
-             New Capability
-                   │
-                   ▼
-            FastAPI Backend
-             /           \
-            /             \
-           ▼               ▼
-    Internal Agent       MCP Server
-```
-
-not:
-
-```text
-        New Capability
-          /    |    \
-         ▼     ▼     ▼
-      Agent   MCP   Backend
-      logic   logic   logic
-```
-
-The second approach creates duplicated business rules and makes the system harder to maintain.
+This keeps the backend as the single source of truth.
 
 ---
 
 # Design Principles
 
-### Backend owns state
+### One commerce authority
 
-Products, carts, orders, users, and payments are backend concerns.
+Products, carts, orders, users, and payments are owned by the backend.
 
-### Agents own reasoning
+### AI is not the source of truth
 
-The LLM determines which available operation is useful and interprets the result.
+The LLM proposes actions; application code validates and executes them.
 
-### Tools are controlled interfaces
+### Agents use capabilities, not internals
 
-Agent tools translate model actions into authenticated application requests.
+The agent interacts through tools and the commerce API instead of directly accessing application state.
 
-### MCP is an interoperability boundary
+### MCP does not duplicate the backend
 
-MCP allows external AI clients to use the commerce system without exposing the internal implementation.
+MCP provides a standard external interface to existing commerce capabilities.
 
-### Authentication follows the request
+### Identity follows the request
 
-Agent and MCP requests still resolve to an authenticated application user before accessing protected commerce operations.
+External OAuth identity is mapped to an application user before accessing protected backend operations.
 
 ### Payments remain deterministic
 
-Payment verification and order state transitions are handled by the backend and payment provider, not by the LLM.
+Payment state comes from the backend and Razorpay, not from model output.
+
+### Keep the AI layer replaceable
+
+The commerce system should continue to function independently of a particular LLM or agent implementation.
 
 ---
 
-# The Big Picture
+# What This Project Demonstrates
 
-This project can be summarized as:
+This project explores a shift from:
 
 ```text
-              ┌─────────────────────┐
-              │     Human User      │
-              └──────────┬──────────┘
-                         │
-                    Web / Chat
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │   FastAPI Backend   │◄──────────────┐
-              │                     │               │
-              │  Commerce + Auth    │               │
-              └─────────┬───────────┘               │
-                        │                            │
-               ┌────────┴────────┐                   │
-               ▼                 ▼                   │
-          PostgreSQL          Razorpay               │
-                                                     │
-                                            CommerceClient
-                                                     ▲
-                                                     │
-                                                MCP Server
-                                                     ▲
-                                                     │
-                                              External AI
+Traditional E-commerce
+
+User → Web App → REST API
 ```
 
-The system is therefore not simply **“a chatbot for an online store.”**
+to:
 
-It is a **centralized commerce backend with multiple AI interfaces**:
+```text
+Agentic E-commerce
 
-* a built-in tool-calling agent for conversational commerce
-* an MCP server for external AI agents
-* a conventional web frontend for direct human interaction
+Human ──────────────┐
+                    │
+Internal AI Agent ──┼──► Commerce API ──► State
+                    │
+External AI ── MCP ─┘
+```
 
-All three ultimately rely on the same application layer, authentication model, database, and payment infrastructure.
+The result is not simply a chatbot placed on top of an online store.
+
+It is a **commerce system designed to be operated by agents** while keeping the parts that require determinism — authentication, authorization, state, orders, and payments — inside the application layer.
+
+### The core idea
+
+> **One commerce backend. Multiple interfaces. AI for reasoning, application code for control.**
+
+---
+
+# Contributing
+
+Contributions are welcome.
+
+Before adding functionality, identify which layer owns the responsibility:
+
+```text
+Reasoning / intent       → Agent
+Tool interface           → Agent Tools / MCP
+Business rules           → FastAPI
+Persistence              → Database
+Payment state            → Razorpay + Backend
+Authentication           → Security / WorkOS
+```
+
+Keep business logic centralized in the backend and expose it to new interfaces rather than duplicating it.
