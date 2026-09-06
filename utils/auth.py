@@ -1,3 +1,5 @@
+"""Password hashing and verification helpers."""
+
 import bcrypt
 
 

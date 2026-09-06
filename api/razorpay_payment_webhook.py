@@ -16,6 +16,7 @@ WEBHOOK_SECRET = os.environ["razorpay_webhook_secret"]
 
 @webhook_router.post("/webhook/razorpay")
 async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
+    """Validate a Razorpay webhook and update the matching order."""
     print("WEBHOOK HIT")
     body = await request.body()
     signature = request.headers.get("X-Razorpay-Signature")

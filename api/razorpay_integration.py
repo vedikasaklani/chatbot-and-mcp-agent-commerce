@@ -45,6 +45,7 @@ def amount_to_paise(amount: Decimal | float) -> int:
 
 
 def create_order(db: Session, user: User, cart: db_mdl.Cart, initiated_by: Literal["user", "agent"]):
+    """Create a Razorpay order from the user's current cart."""
     query = (
         db.query(db_mdl.CartItem)
         .join(db_mdl.CartItem.product)
@@ -136,6 +137,7 @@ def create_order_human(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Create an order initiated by the customer-facing API."""
     return create_order(db, current_user, cart, initiated_by="user")
 
 @agent_router.post("/orders", response_model=OrderOut)
@@ -144,6 +146,7 @@ def create_order_agent(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Create an order initiated by the shopping agent."""
     return create_order(db, current_user, cart, initiated_by="agent")
 
 
@@ -151,6 +154,7 @@ def create_order_agent(
 def get_all_order(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
+    """Return all orders belonging to the authenticated user."""
     return db.query(db_mdl.Order).filter(db_mdl.Order.user_id == user.id).all()
 
 
@@ -158,6 +162,7 @@ def get_all_order(
 def order_confirmed(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
+    """Return paid orders belonging to the authenticated user."""
     return (
         db.query(db_mdl.Order)
         .filter(
@@ -169,12 +174,14 @@ def order_confirmed(
 
 @agent_router.get("/orders/{id}")
 def get_order(id:int, db:Session=Depends(get_db), user:User=Depends(get_current_user)):
+    """Return one order belonging to the authenticated user."""
     query=db.query(db_mdl.Order).filter(db_mdl.Order.user_id==user.id).filter(db_mdl.Order.id==id)
     return query[0]
 
 #this returns what the frontend needs for razorpay checkout
 #it also provides guardrails- cant pay for paid/ transaction in progress order.
 def prepare_checkout_session(*, order: db_mdl.Order, user: User) -> dict:
+    """Build the payment payload required by Razorpay Checkout."""
     if order.razorpay_payment_id:
         raise HTTPException(status_code=409, detail="A payment is already in progress for this order")
     if not order.razorpay_order_id:
@@ -201,6 +208,7 @@ def order_payment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """Prepare checkout for an agent-created pending order."""
     order = (
         db.query(db_mdl.Order)
         .filter(db_mdl.Order.id == id, db_mdl.Order.user_id == user.id)
@@ -220,6 +228,7 @@ def verify_order_payment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """Verify a Razorpay payment signature and mark the order paid."""
     order = (
         db.query(db_mdl.Order)
         .filter(db_mdl.Order.id == id, db_mdl.Order.user_id == user.id)
@@ -259,6 +268,7 @@ def initiate_payment(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Prepare checkout for a customer-created pending order."""
     order = (
         db.query(db_mdl.Order)
         .filter(db_mdl.Order.id == order_id, db_mdl.Order.user_id == current_user.id)
@@ -276,6 +286,7 @@ def get_payment_link(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """Create and return a hosted payment link for a pending order."""
     order = (
         db.query(db_mdl.Order)
         .filter(db_mdl.Order.id == id, db_mdl.Order.user_id == user.id)

@@ -26,6 +26,7 @@ router=APIRouter(
 
 @router.post("/register")
 def register(data:RegisterRequest, db: Session = Depends(get_db)):
+    """Register a user and return a bearer access token."""
     email = data.resolved_email
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
@@ -53,6 +54,7 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
+    """Authenticate a user with the OAuth2 password form."""
     user = db.query(database_models.User).filter(
         database_models.User.email == form_data.username
     ).first()
@@ -78,6 +80,7 @@ def login(
 def workos_login_page(
     external_auth_id: str = Query(...)
 ):
+    """Redirect the frontend to the WorkOS login flow."""
     #the frontend login ui workos should redirect to
     frontend_login_url = (
         "https://agent-commerce-payout-automation.onrender.com/"
@@ -97,7 +100,7 @@ def workos_login(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    #authenticate using existing : 
+    """Authenticate a WorkOS user against the existing local account."""
 
     user = (
         db.query(database_models.User)

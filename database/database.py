@@ -19,6 +19,7 @@ session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def get_db():
+    """Yield a database session and close it after the request finishes."""
     db = session()
     try:
         yield db

@@ -1,3 +1,5 @@
+"""Tool definitions and dispatch logic for the shopping agent."""
+
 from commerce_client import commerce_client
 
 

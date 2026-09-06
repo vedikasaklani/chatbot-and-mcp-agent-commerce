@@ -1,3 +1,5 @@
+"""Manual smoke test for the external MCP server."""
+
 import asyncio
 
 from fastmcp import Client
@@ -17,6 +19,7 @@ EXPECTED_TOOLS = {
 
 
 async def main() -> None:
+    """Connect to the MCP server and verify its exposed tools."""
     async with Client(MCP_SERVER_URL, auth="oauth") as client:
         tools = await client.list_tools()
         visible_tools = {tool.name for tool in tools}

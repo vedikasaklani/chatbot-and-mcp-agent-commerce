@@ -1,3 +1,5 @@
+"""JWT creation and authentication helpers for API requests."""
+
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -18,6 +20,7 @@ ALGORITHM = "HS256"
 SECRET_KEY=os.environ["SECRET_KEY"]
 
 def create_access_token(user_id):
+    """Create a seven-day JWT for a user identifier."""
     expire = datetime.now(timezone.utc) + timedelta(days=7)
 
     payload = {
@@ -33,6 +36,7 @@ def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
+    """Validate a bearer token and return the associated user."""
     try:
         payload = jwt.decode(
             token,

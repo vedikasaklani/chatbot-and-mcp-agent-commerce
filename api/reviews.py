@@ -13,6 +13,7 @@ def get_product_rating(
     product_id: int,
     db: Session = Depends(get_db)
 ):
+    """Return the average rating and review count for a product."""
     result = (
         db.query(
             func.avg(Review.rating).label("average_rating"),

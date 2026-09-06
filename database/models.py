@@ -68,4 +68,5 @@ class RegisterRequest(BaseModel):
 
     @property
     def resolved_email(self) -> str:
+        """Return the normalized email supplied by the caller."""
         return (self.email or self.username or "").strip().lower()

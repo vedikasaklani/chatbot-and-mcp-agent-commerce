@@ -30,6 +30,7 @@ agent-commerce-payout-automation = "agent_commerce_payout_automation:main"
 [dependency-groups]
 dev = [
     "pylint>=3.3.0",
+    "pytest>=8.0.0",
 ]
 
 [build-system]

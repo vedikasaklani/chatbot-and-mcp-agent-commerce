@@ -48,6 +48,7 @@ class CommerceClient:
 
     def search_products(self, headers: dict, q=None, category=None,
                          min_price=None, max_price=None, in_stock=None):
+        """Search the backend catalog using optional product filters."""
         params = {}
         if q is not None:
             params["q"] = q
@@ -65,23 +66,29 @@ class CommerceClient:
         return self._get("/products", headers, params=params)
 
     def get_product(self, headers: dict, product_id: int):
+        """Fetch one product by identifier."""
         return self._get(f"/products/{product_id}", headers)
 
     def get_ratings(self, headers: dict, product_id: int):
+        """Fetch product reviews and ratings."""
         return self._get(f"/reviews/products/{product_id}", headers)
 
 
     def view_cart(self, headers: dict):
+        """Fetch the current user's cart."""
         return self._get("/cart", headers)
 
     def add_to_cart(self, headers: dict, product_id: int, quantity: int):
+        """Add a quantity of a product to the cart."""
         return self._post(f"/cart/{product_id}/{quantity}", headers)
 
     def remove_from_cart(self, headers: dict, product_id: int, quantity: int):
+        """Remove a quantity of a product from the cart."""
         return self._post(f"/cart/{product_id}/{quantity}/delete", headers)
 
 
     def create_order(self, headers: dict):
+        """Create an order from the current cart."""
         return self._post("/razorpay/agent/orders", headers)
 
     def initiate_payment(self, headers: dict, order_id: int):
@@ -93,6 +100,7 @@ class CommerceClient:
         return self._post(f"/razorpay/agent/orders/{order_id}/payment-link", headers)
 
     def check_order_status(self, headers: dict, order_id: int):
+        """Fetch the status of an order."""
         return self._get(f"/razorpay/agent/orders/{order_id}", headers)
 
 

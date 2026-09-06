@@ -1,5 +1,4 @@
-"""Basic operations for agent to interact with ecommerce store"""
-"""APIs for search, cart management, ordering and payment"""
+"""APIs for search, cart management, ordering, and payment."""
 from pathlib import Path
 from typing import Optional
 
@@ -48,6 +47,7 @@ def chat(
     user: database_models.User = Depends(get_current_user),
     db:Session=Depends(get_db)
 ):
+    """Run the shopping agent and persist any resulting order decision."""
     result = run_agent(db, user.id, payload.messages, token=auth_token)
     order_id = next(
         (e["result"]["id"] for e in result["trace"]
@@ -74,6 +74,7 @@ def get_products(
     in_stock: bool | None = None,
     db: Session = Depends(get_db),
 ):
+    """Return products matching the supplied search and inventory filters."""
     query = db.query(database_models.Product)
 
     if q:
@@ -95,6 +96,7 @@ def get_product(
     id: int,
     db: Session=Depends(get_db)
 ):
+    """Return a product by its database identifier."""
     product=db.query(database_models.Product).filter(database_models.Product.pid==id).first()
     return product
 
@@ -104,6 +106,7 @@ def get_cart(
     db: Session = Depends(get_db),
     user: database_models.User = Depends(get_current_user),
 ):
+    """Return the authenticated user's cart."""
     cart = cart_service.find_cart(db, user)
     return cart_service.serialize_cart(db, cart, user.id)
 
@@ -115,6 +118,7 @@ def add_cart(
     db: Session = Depends(get_db),
     user: database_models.User = Depends(get_current_user),
 ):
+    """Add a positive quantity of a product to the authenticated user's cart."""
     if qty <= 0:
         raise HTTPException(status_code=400, detail="Quantity must be positive.")
 
@@ -129,6 +133,7 @@ def delete_from_cart(
     db: Session = Depends(get_db),
     user: database_models.User = Depends(get_current_user),
 ):
+    """Remove a positive quantity of a product from the authenticated user's cart."""
     if qty <= 0:
         raise HTTPException(status_code=400, detail="Quantity to remove must be positive.")
 
