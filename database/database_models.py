@@ -12,6 +12,7 @@ from sqlalchemy.orm import relationship
 Base=declarative_base()
 
 class User(Base):
+    """Persisted customer account."""
     __tablename__="Users"
     id=Column(UUID(as_uuid=True), default=uuid.uuid4, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
@@ -28,6 +29,7 @@ class User(Base):
     orders = relationship("Order", back_populates="user")
 
 class Product(Base):
+    """Persisted product catalog entry."""
     __tablename__="Products"
     pname=Column(String)
     pid=Column(Integer, primary_key=True, index=True)
@@ -38,6 +40,7 @@ class Product(Base):
     url=Column(String)
 
 class Cart(Base):
+    """Shopping cart belonging to one user."""
     __tablename__ = "Carts"
     id = Column(Integer, primary_key=True)
     user_id = Column(
@@ -55,6 +58,7 @@ class Cart(Base):
     )
 
 class CartItem(Base):
+    """Product quantity stored in a shopping cart."""
     __tablename__ = "cart_items"
     id = Column(Integer, primary_key=True, index=True)
     quantity = Column(Integer, nullable=False, default=1)
@@ -80,6 +84,7 @@ class CartItem(Base):
 
 
 class OrderStatus(str, enum.Enum):
+    """Lifecycle states for an order."""
     CREATED = "created"       # order intent saved, not yet sent to Razorpay
     PENDING = "pending"       # Razorpay order created, awaiting payment
     PAID = "paid"             # payment verified
@@ -88,6 +93,7 @@ class OrderStatus(str, enum.Enum):
 
 
 class Order(Base):
+    """Persisted customer order."""
     __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -105,6 +111,7 @@ class Order(Base):
 
 
 class OrderItem(Base):
+    """Product snapshot included in an order."""
     __tablename__ = "order_items"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -133,6 +140,7 @@ class ConversationSession(Base):
 
 
 class Review(Base):
+    """Customer review and rating for a product."""
     __tablename__ = "reviews"
     id = Column(Integer, primary_key=True)
 

@@ -1,14 +1,4 @@
 "use strict";
-
-/* =====================================================================
- * CONFIG
- * CONFIRM: registration endpoint/shape isn't in the README at all —
- * guessed as POST /auth/register with JSON {name, email, password},
- * returning {access_token, token_type} the same way /token does, so
- * a successful signup can log the user straight into the chat app.
- * If the real endpoint instead just creates the account and expects a
- * separate sign-in step, swap the redirect below for one to "/".
- * ===================================================================== */
 const API_BASE = window.location.port === "8000"
   ? ""
   : `${window.location.protocol}//${window.location.hostname}:8000`;

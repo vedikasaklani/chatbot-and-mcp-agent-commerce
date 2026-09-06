@@ -17,6 +17,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    """Add authentication columns to the users table when missing."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     columns = {col["name"] for col in inspector.get_columns("Users")}
@@ -30,6 +31,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Remove authentication columns from the users table when present."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     columns = {col["name"] for col in inspector.get_columns("Users")}

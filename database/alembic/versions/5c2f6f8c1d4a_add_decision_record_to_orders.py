@@ -17,6 +17,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    """Add the decision record column when it is missing."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     columns = {column["name"] for column in inspector.get_columns("orders")}
@@ -25,6 +26,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Remove the decision record column when it exists."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     columns = {column["name"] for column in inspector.get_columns("orders")}

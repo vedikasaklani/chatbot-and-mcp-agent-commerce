@@ -116,7 +116,10 @@ METADATA_PATHS = {
 }
 
 class StripTrailingSlashMiddleware(BaseHTTPMiddleware):
+    """Normalize trailing slashes in OAuth metadata responses."""
+
     async def dispatch(self, request, call_next):
+        """Rewrite OAuth metadata URLs before returning the response."""
         response = await call_next(request)
         if request.url.path not in METADATA_PATHS:
             return response
