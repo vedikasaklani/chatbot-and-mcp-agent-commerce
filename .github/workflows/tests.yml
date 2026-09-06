@@ -23,4 +23,4 @@ jobs:
           pip install pytest
 
       - name: Run tests
-        run: pytest tests/test_razorpay_flow.py
+        run: pytest tests/test_razorpay_flows.py
