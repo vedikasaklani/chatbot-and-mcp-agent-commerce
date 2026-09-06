@@ -18,3 +18,5 @@ jobs:
         run: uv sync --all-extras --dev
       - name: Run Pylint
         run: uv run pylint $(git ls-files '*.py')
+      - name: Run tests
+        run: pytest tests/test_flow
