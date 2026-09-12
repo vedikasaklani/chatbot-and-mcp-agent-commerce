@@ -1,4 +1,4 @@
-# Agentic Commerce
+# Agent Commerce
 
 ### An e-commerce backend built for both humans and AI agents.
 
