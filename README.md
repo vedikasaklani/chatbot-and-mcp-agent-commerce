@@ -4,7 +4,7 @@
 
 Traditional e-commerce APIs are designed for applications.
 
-This project makes the same commerce capabilities available to **AI agents** — without giving an LLM direct control over application state.
+This project makes the same commerce capabilities available to **AI agents** , without giving an LLM direct control over application state.
 
 A user can browse products, manage a cart, place an order, and initiate payment through the web application or conversationally through the built-in AI agent. External AI clients can perform the same operations through an **OAuth-protected MCP server**.
 
