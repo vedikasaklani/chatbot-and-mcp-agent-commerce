@@ -656,7 +656,7 @@ It is a **commerce system designed to be operated by agents** while keeping the 
 
 ### The core idea
 
-> **One commerce backend. Multiple interfaces. AI for reasoning, application code for control.**
+> **One commerce backend. Multiple interfaces. AI for reasoning, and application code for control.**
 
 ---
 
