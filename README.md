@@ -602,7 +602,7 @@ This keeps the backend as the single source of truth.
 
 Products, carts, orders, users, and payments are owned by the backend.
 
-### AI is not the source of truth
+### AI is not the source of truth.
 
 The LLM proposes actions; application code validates and executes them.
 
