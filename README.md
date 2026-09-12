@@ -676,3 +676,4 @@ Authentication           → Security / WorkOS
 ```
 
 Keep business logic centralized in the backend and expose it to new interfaces rather than duplicating it.
+#This repo is being recently edited, as I am testing another project on it. 
