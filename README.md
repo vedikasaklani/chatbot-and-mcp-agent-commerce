@@ -385,7 +385,7 @@ It cannot manufacture a successful payment result.
 └── uv.lock
 ```
 
-### Core responsibilities
+### Core responsibilities :
 
 | Component            | Responsibility                                                |
 | -------------------- | ------------------------------------------------------------- |
