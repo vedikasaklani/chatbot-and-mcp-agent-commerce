@@ -1,10 +1,10 @@
-# Agent Commerce
-
+# Agent Commerce 
+(recent readme changes are being made to test my gitapp)
 ### An e-commerce backend built for both humans and AI agents.
 
-Traditional e-commerce APIs are designed for applications.
+Traditional E-commerce APIs are designed for applications.
 
-This project makes the same commerce capabilities available to **AI agents** — without giving an LLM direct control over application state.
+This project makes the same commerce capabilities available to **AI agents** , without giving an LLM direct control over application state.
 
 A user can browse products, manage a cart, place an order, and initiate payment through the web application or conversationally through the built-in AI agent. External AI clients can perform the same operations through an **OAuth-protected MCP server**.
 
@@ -385,7 +385,7 @@ It cannot manufacture a successful payment result.
 └── uv.lock
 ```
 
-### Core responsibilities
+### Core responsibilities :
 
 | Component            | Responsibility                                                |
 | -------------------- | ------------------------------------------------------------- |
@@ -602,7 +602,7 @@ This keeps the backend as the single source of truth.
 
 Products, carts, orders, users, and payments are owned by the backend.
 
-### AI is not the source of truth
+### AI is not the source of truth.
 
 The LLM proposes actions; application code validates and executes them.
 
@@ -656,7 +656,7 @@ It is a **commerce system designed to be operated by agents** while keeping the 
 
 ### The core idea
 
-> **One commerce backend. Multiple interfaces. AI for reasoning, application code for control.**
+> **One commerce backend. Multiple interfaces. AI for reasoning, and application code for control.**
 
 ---
 
@@ -676,3 +676,4 @@ Authentication           → Security / WorkOS
 ```
 
 Keep business logic centralized in the backend and expose it to new interfaces rather than duplicating it.
+#This repo is being recently edited, as I am testing another project on it. 
