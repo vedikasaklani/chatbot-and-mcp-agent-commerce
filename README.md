@@ -2,7 +2,7 @@
 (recent readme.md changes are being made to test my gitapp)
 ### An e-commerce backend built for both humans and AI agents.
 
-Traditional e-commerce APIs are designed for applications.
+Traditional E-commerce APIs are designed for applications.
 
 This project makes the same commerce capabilities available to **AI agents** , without giving an LLM direct control over application state.
 
