@@ -24,11 +24,32 @@ mcp = FastMCP(
 )
 
 
+STDIO_USER_EMAIL_ENV = "STDIO_USER_EMAIL"
+
+
+def _caller_email() -> str | None:
+    """Identify the caller without depending on the transport's auth flow.
+
+    In streamable-http / SSE mode the AuthKit Provider verifies the caller and
+    exposes them through `get_access_token()`. In stdio mode there is no OAuth
+    handshake and no request, so an identity-bearing access token is never
+    available -- fall back to the `STDIO_USER_EMAIL` environment variable.
+    """
+    token = get_access_token()
+    if token is not None:
+        return token.claims.get("email")
+    return os.environ.get(STDIO_USER_EMAIL_ENV)
+
+
 def _headers() -> dict:
-    """Map the WorkOS-verified caller to one of OUR users, then mint a
+    """Map the caller to one of OUR users, then mint a
     normal backend JWT for calling our own FastAPI API."""
-    token = get_access_token()               # verified by AuthKitProvider 
-    email = token.claims.get("email")        
+    email = _caller_email()
+    if not email:
+        raise HTTPException(
+            403,
+            f"No authenticated email. Set {STDIO_USER_EMAIL_ENV} when running in stdio mode.",
+        )
 
     # we have to drive the generator ourselves to get a real Session.
     db_gen = get_db()
@@ -36,7 +57,7 @@ def _headers() -> dict:
     try:
         user = db.query(User).filter(User.email == email).first()
         if user is None:
-            raise HTTPException(403, "No matching account for this email")
+            raise HTTPException(403, f"No matching account for this email: {email}")
         return {"Authorization": f"Bearer {create_access_token(user.id)}"}
     finally:
         next(db_gen, None)  
