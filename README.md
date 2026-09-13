@@ -1,5 +1,5 @@
 # Agent Commerce 
-(recent readme changes are being made to test my gitapp)
+(recent readme changes and stdio server addition are being made to test my gitapp)
 ### An e-commerce backend built for both humans and AI agents.
 
 Traditional E-commerce APIs are designed for applications.
