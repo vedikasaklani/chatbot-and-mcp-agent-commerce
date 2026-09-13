@@ -1,4 +1,4 @@
-# Agentic Commerce
+# Agent Commerce
 (recent readme.md changes are being made to test my gitapp)
 ### An e-commerce backend built for both humans and AI agents.
 
