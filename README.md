@@ -516,7 +516,7 @@ cd chatbot-and-mcp-agent-commerce
 uv sync
 ```
 
-## 3. Configure environment variables
+## 3. Configure environment variable
 
 Configure the credentials required by the application:
 
