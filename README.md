@@ -63,6 +63,7 @@ The core idea is simple:
                 ▼
           FASTAPI BACKEND
 ```
+<img width="1642" height="676" alt="image" src="https://github.com/user-attachments/assets/d972df7f-27d8-415a-9156-03028fc75bd0" />
 
 There are **multiple ways into the system, but only one commerce authority**.
 
